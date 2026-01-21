@@ -1,0 +1,74 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# Ambientes virtuais (não versionar)
+# =========================
+.venv*/
+venv/
+env/
+
+# =========================
+# Segredos / variáveis
+# =========================
+.env
+*.env
+
+# =========================
+# Streamlit
+# =========================
+.streamlit/secrets.toml
+
+# =========================
+# Dados temporários do painel / uploads / backups
+# =========================
+_painel_uploads/
+_painel_backup/
+
+# =========================
+# Dados, transcrições e saídas (NÃO versionar)
+# =========================
+arquivos_transcritos/
+arquivos_postprocess/
+saida_excel/
+saida_avaliacao/
+saida_metricas/
+saidas_txt/
+
+# Caso você tenha outras pastas de saídas:
+outputs/
+out/
+logs/
+
+# Arquivos de saída comuns
+*.xlsx
+*.wav
+*.mp3
+*.jsonl
+*.log
+
+# =========================
+# Rascunhos / diagnósticos locais
+# =========================
+consultas_do_codigo/
+estrutura.txt
+
+# =========================
+# Caches / testes / lint
+# =========================
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Quarentena (se existir)
+# =========================
+_trash/

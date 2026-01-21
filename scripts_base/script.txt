@@ -1,0 +1,51 @@
+###################################################################################################################################
+
+
+                                      LINHA DE COMANDO
+###################################################################################################################################
+
+
+Desativar ambientes: deactivate
+
+###################################################################################################################################
+
+
+C:\Users\Pichau\Desktop\Projeto Tele_IA Transcricao> 
+
+PS C:\Users\Pichau\Desktop\Projeto Tele_IA Transcricao> 
+
+###################################################################################################################################
+
+
+1. Transcrição
+
+# Ativa o ambiente virtual: .venv_transcricao\Scripts\activate
+
+# Executa o script de transcrição: python scripts_base/01_transcricao.py
+
+###################################################################################################################################
+
+2. Análise Zero-Shot e Avaliação
+
+# Ativa o ambiente virtual: .venv_zeroshot\Scripts\activate
+
+# 1. Executa a análise Zero-Shot (Gera resultados brutos e TXT): python scripts_base/02_zeroshot.py
+
+# 2. Executa a Avaliação Avançada (Gera o Score, Consistência e Relatório final): python scripts_base/03_avaliacao_zeroshot.py
+
+###################################################################################################################################
+
+3. Painel de Visualização (Streamlit)
+
+
+# Ativa o ambiente virtual: .venv_painel\Scripts\activate
+
+# Executa o script Python: python 04_painel.py
+
+# OU
+
+# Executa diretamente com o Streamlit (método preferido): streamlit run scripts_base/04_painel.py
+
+###################################################################################################################################
+
+

@@ -1,0 +1,23 @@
+C:\Users\Pichau\Desktop\Projeto Tele_IA Transcricao\.venv_transcricao\Scripts\activate
+
+cd "C:\Users\Pichau\Desktop\Projeto Tele_IA Transcricao\scripts_auxiliar"
+
+. .venv_transcricao\Scripts\activate
+
+. ..\.venv_transcricao\Scripts\activate
+
+python postprocess_diarization_llm.py
+
+
+
+###########################################################################################
+
+
+
+.venv_metricas\Scripts\activate
+
+python calcular_metricas_diarizacao.py
+
+python scripts_auxiliar\calcular_metricas_diarizacao.py
+ 
+###########################################################################################
