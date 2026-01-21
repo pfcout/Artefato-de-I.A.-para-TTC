@@ -192,7 +192,7 @@ O projeto original serviu como base conceitual para a adaptação do motor de an
 * **Criador do projeto:**
   **Paulo Coutinho**
 
-* **Desenvolvimento, adaptação e painel:**
+* **Ajudante:**
   **Lucas Gabriel Ferreira Gomes**
   *(Freelancer / Cientista de Dados)*
 
