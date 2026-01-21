@@ -48,7 +48,8 @@ Fluxo geral:
 3. Avaliação estruturada (pontuação por critério)  
 4. Consolidação em painel interativo (Streamlit)  
 
-O painel **não armazena permanentemente** arquivos enviados (WAV ou TXT). Todos os dados de entrada são tratados como temporários.
+O painel **não armazena permanentemente** arquivos enviados (WAV ou TXT).  
+Todos os dados de entrada são tratados como temporários.
 
 ---
 
@@ -64,14 +65,18 @@ Projeto Tele_IA Transcricao/
 │   └─ 04_painel.py
 │
 ├─ zeroshot_engine/           # Motor Zero-Shot (adaptado)
-├─ scripts_auxiliar/          # Scripts de apoio (métricas, pós-processamento)
-├
+├─ scripts_auxiliar/          # Scripts de apoio
+│
+├─ requirements/              # Requisitos separados por ambiente
+│   ├─ requirements_transcricao.txt
+│   ├─ requirements_zero_shot.txt
+│   └─ requirements_painel.txt
 │
 ├─ arquivos_transcritos/      # (não versionado) entradas temporárias
-├─ saida_excel/               # (não versionado) resultados gerados
-├─ saida_avaliacao/           # (não versionado) avaliações finais
+├─ saida_excel/               # (não versionado) resultados
+├─ saida_avaliacao/           # (não versionado) avaliações
 │
-├─ requirements.txt
+├
 ├─ .gitignore
 └─ README.md
 ````
@@ -82,14 +87,17 @@ Projeto Tele_IA Transcricao/
 
 ## Requisitos
 
-* Python **3.11 recomendado** (compatível com 3.10+)
+* Python **3.11 recomendado** (compatível com 3.10)
+* **Evite Python 3.13** (pode causar incompatibilidades com áudio/ASR)
 * Windows (ambiente principal testado)
 * CPU (GPU é opcional)
 * Configuração local do **Ollama** para inferência LLM
 
 ---
 
-## Instalação — do zero
+## Instalação — do zero (Windows)
+
+## 3 ambientes virtuais 
 
 ### 1. Clonar o repositório
 
@@ -100,28 +108,58 @@ cd Artefato-de-I.A.-para-TTC
 
 ---
 
-### 2. Criar ambiente virtual
+### 2. Ambiente de TRANSCRIÇÃO (script 01)
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
+py -3.11 -m venv .venv_transcricao
+.\.venv_transcricao\Scripts\Activate.ps1
+python -m pip install -U pip setuptools wheel
+python -m pip install -r .\requirements\requirements_transcricao.txt
+```
+
+Executar:
+
+```powershell
+python .\scripts_base\01_transcricao.py
 ```
 
 ---
 
-### 3. Instalar dependências
+### 3. Ambiente ZERO-SHOT (script 02)
 
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
+```powershell
+py -3.11 -m venv .venv_zeroshot
+.\.venv_zeroshot\Scripts\Activate.ps1
+python -m pip install -U pip setuptools wheel
+python -m pip install -r .\requirements\requirements_zero_shot.txt
 ```
 
-> Ambientes virtuais **não são versionados**.
-> A reprodução do projeto é feita exclusivamente via `requirements.txt`.
+Executar:
+
+```powershell
+python .\scripts_base\02_zeroshot.py
+```
 
 ---
 
-### 4. Configurar o Ollama (LLM local)
+### 4. Ambiente do PAINEL (script 04)
+
+```powershell
+py -3.11 -m venv .venv_painel
+.\.venv_painel\Scripts\Activate.ps1
+python -m pip install -U pip setuptools wheel
+python -m pip install -r .\requirements\requirements_painel.txt
+```
+
+Executar:
+
+```powershell
+streamlit run .\scripts_base\04_painel.py
+```
+
+---
+
+## Configuração do Ollama (LLM local)
 
 Certifique-se de que o Ollama esteja instalado e em execução:
 
@@ -129,7 +167,7 @@ Certifique-se de que o Ollama esteja instalado e em execução:
 ollama serve
 ```
 
-Exemplo de download de modelo:
+Exemplo de modelo:
 
 ```bash
 ollama pull llama3
@@ -139,69 +177,33 @@ Os scripts utilizam comunicação HTTP local com o Ollama.
 
 ---
 
-## Executando o painel
+## Execução avançada (sem painel)
 
-Na raiz do projeto, com a venv ativa:
-
-```bash
-streamlit run scripts_base/04_painel.py
-```
-
-O painel será aberto automaticamente no navegador.
-
----
-
-## Execução avançada (pipeline sem interface)
-
-Embora o **painel Streamlit** seja a forma principal e recomendada de utilização do projeto, o repositório também disponibiliza o **pipeline completo de processamento** de forma modular, por meio dos scripts localizados em `scripts_base/`.
-
-Esses scripts permitem a execução **sem interface gráfica**, sendo úteis para:
+Os scripts em `scripts_base/` podem ser executados de forma modular para:
 
 * reprodutibilidade acadêmica
 * auditoria metodológica
 * experimentos controlados
-* integração com outros sistemas
 
-### Scripts principais
+Scripts principais:
 
-* `01_transcricao.py`
-  Responsável pela transcrição automática de áudios (quando aplicável), incluindo diarização e pós-processamento.
+* `01_transcricao.py` — transcrição e diarização
+* `02_zeroshot.py` — análise semântica
+* `03_avaliacao_zeroshot.py` — avaliação estruturada
+* `04_painel.py` — orquestrador Streamlit
 
-* `02_zeroshot.py`
-  Realiza a análise semântica das transcrições utilizando um motor Zero-Shot via LLM.
-
-* `03_avaliacao_zeroshot.py`
-  Aplica critérios estruturados de avaliação SPIN, gerando métricas e pontuações.
-
-O script `04_painel.py` atua como **orquestrador**, encapsulando essas etapas em uma interface interativa e segura.
-
-> Para a maioria dos usuários, recomenda-se **utilizar exclusivamente o painel**.
-> A execução direta dos scripts é indicada apenas para usuários com conhecimento técnico ou fins acadêmicos específicos.
-
----
-
-## Painel online (Streamlit Cloud)
-
-> Ainda não publicado
-
-Quando disponível, o painel poderá ser acessado abaixo:
-
-<p align="center">
-  <a href="LINK_A_SER_ADICIONADO" target="_blank">
-    <img src="https://img.shields.io/badge/Acessar%20Painel-Streamlit-blue?style=for-the-badge" />
-  </a>
-</p>
+> Para a maioria dos usuários, recomenda-se **utilizar apenas o painel**.
 
 ---
 
 ## Segurança e privacidade
 
-* Arquivos WAV enviados são apagados automaticamente
-* Transcrições temporárias são removidas após o processamento
-* Nenhum áudio ou conversa é persistido
-* Apenas métricas agregadas podem ser salvas localmente (opcional)
+* Arquivos WAV são apagados automaticamente
+* Transcrições são temporárias
+* Nenhum áudio é persistido
+* Apenas métricas agregadas podem ser salvas (opcional)
 
-O projeto foi desenhado para **uso acadêmico e profissional responsável**, especialmente em contextos de TTC.
+Projeto desenvolvido para **uso acadêmico e profissional responsável**.
 
 ---
 
@@ -209,35 +211,30 @@ O projeto foi desenhado para **uso acadêmico e profissional responsável**, esp
 
 ### Inspiração técnica
 
-Este projeto foi **inspirado** no motor Zero-Shot desenvolvido por:
+Projeto inspirado no motor Zero-Shot de:
 
 **Lucas Schwarz**
 [https://github.com/TheLucasSchwarz/zeroshotENGINE](https://github.com/TheLucasSchwarz/zeroshotENGINE)
 
-O projeto original serviu como base conceitual para a adaptação do motor de análise semântica.
-
 ---
 
-### Autoria do projeto
+### Autoria
 
-* **Criador do projeto:**
-  **Paulo Coutinho**
-
-* **Ajudante:**
-  **Lucas Gabriel Ferreira Gomes**
+* **Criador:** Paulo Coutinho
+* **Colaborador:** Lucas Gabriel Ferreira Gomes
   *(Freelancer / Cientista de Dados)*
 
 ---
 
 ## Licença
 
-Este projeto é distribuído sob a **Apache License 2.0**, mantendo compatibilidade com o projeto que o inspirou.
+Distribuído sob a **Apache License 2.0**.
 
-* Uso, modificação e redistribuição são permitidos
-* Créditos ao projeto original devem ser mantidos
-* O software é fornecido “no estado em que se encontra”, sem garantias
+* Uso, modificação e redistribuição permitidos
+* Créditos devem ser mantidos
+* Software fornecido “como está”, sem garantias
 
-Recomenda-se a leitura completa do arquivo `LICENSE`.
+Consulte o arquivo `LICENSE`.
 
 ---
 
@@ -250,4 +247,4 @@ Este repositório foi estruturado para:
 * boas práticas de engenharia de software
 * compatibilidade com GitHub e Streamlit Cloud
 
-Sugestões e melhorias podem ser discutidas via Issues.
+Sugestões e melhorias podem ser discutidas via **Issues**.
