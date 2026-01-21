@@ -65,7 +65,7 @@ Projeto Tele_IA Transcricao/
 │
 ├─ zeroshot_engine/           # Motor Zero-Shot (adaptado)
 ├─ scripts_auxiliar/          # Scripts de apoio (métricas, pós-processamento)
-├─ tools/                     # Ferramentas internas (scan, manutenção)
+├
 │
 ├─ arquivos_transcritos/      # (não versionado) entradas temporárias
 ├─ saida_excel/               # (não versionado) resultados gerados
