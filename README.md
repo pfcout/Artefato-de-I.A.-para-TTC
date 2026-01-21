@@ -1,4 +1,4 @@
-# Artefato de I.A. para TTC  
+# Artefato de I.A. para TTC
 
 Este repositório apresenta um **artefato de Inteligência Artificial aplicado a TTC (Televendas Técnico-Consultivas)**, materializado em um painel acadêmico e técnico para análise automática de ligações de vendas utilizando o método **SPIN Selling**.
 
@@ -15,10 +15,11 @@ O sistema combina **transcrição de áudio**, **análise semântica via LLM (Ze
 - exploração de impactos e implicações  
 - construção de valor antes da oferta de solução  
 
-Nesse modelo, o vendedor atua como **consultor**, guiando a conversa de forma analítica e orientada a decisão.  
+Nesse modelo, o vendedor atua como **consultor**, guiando a conversa de forma analítica e orientada à decisão.
+
 O método **SPIN Selling** é amplamente utilizado como base conceitual para TTC, pois estrutura o diálogo em **Situação, Problema, Implicação e Necessidade-Benefício**.
 
-Este projeto utiliza IA para **avaliar objetivamente a qualidade dessas interações**, algo que normalmente depende apenas de análise humana.
+Este projeto utiliza IA para **avaliar objetivamente a qualidade dessas interações**, algo que tradicionalmente depende apenas de análise humana.
 
 ---
 
@@ -35,7 +36,7 @@ O projeto foi desenvolvido com foco em:
 
 ## Visão geral do funcionamento
 
-O SPIN Analyzer permite avaliar ligações a partir de:
+O **SPIN Analyzer** permite avaliar ligações a partir de:
 
 - Transcrições em texto (formato `[VENDEDOR]` / `[CLIENTE]`)
 - Áudios WAV (transcrição automática com fallback seguro)
@@ -81,7 +82,7 @@ Projeto Tele_IA Transcricao/
 
 ## Requisitos
 
-* Python **3.10 ou superior**
+* Python **3.11 recomendado** (compatível com 3.10+)
 * Windows (ambiente principal testado)
 * CPU (GPU é opcional)
 * Configuração local do **Ollama** para inferência LLM
@@ -93,8 +94,8 @@ Projeto Tele_IA Transcricao/
 ### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/SEU_USUARIO/artefato-ia-para-ttc.git
-cd artefato-ia-para-ttc
+git clone https://github.com/pfcout/Artefato-de-I.A.-para-TTC.git
+cd Artefato-de-I.A.-para-TTC
 ```
 
 ---
@@ -115,7 +116,8 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> Ambientes virtuais **não são versionados**. A reprodução do projeto é feita exclusivamente via `requirements.txt`.
+> Ambientes virtuais **não são versionados**.
+> A reprodução do projeto é feita exclusivamente via `requirements.txt`.
 
 ---
 
@@ -146,6 +148,35 @@ streamlit run scripts_base/04_painel.py
 ```
 
 O painel será aberto automaticamente no navegador.
+
+---
+
+## Execução avançada (pipeline sem interface)
+
+Embora o **painel Streamlit** seja a forma principal e recomendada de utilização do projeto, o repositório também disponibiliza o **pipeline completo de processamento** de forma modular, por meio dos scripts localizados em `scripts_base/`.
+
+Esses scripts permitem a execução **sem interface gráfica**, sendo úteis para:
+
+* reprodutibilidade acadêmica
+* auditoria metodológica
+* experimentos controlados
+* integração com outros sistemas
+
+### Scripts principais
+
+* `01_transcricao.py`
+  Responsável pela transcrição automática de áudios (quando aplicável), incluindo diarização e pós-processamento.
+
+* `02_zeroshot.py`
+  Realiza a análise semântica das transcrições utilizando um motor Zero-Shot via LLM.
+
+* `03_avaliacao_zeroshot.py`
+  Aplica critérios estruturados de avaliação SPIN, gerando métricas e pontuações.
+
+O script `04_painel.py` atua como **orquestrador**, encapsulando essas etapas em uma interface interativa e segura.
+
+> Para a maioria dos usuários, recomenda-se **utilizar exclusivamente o painel**.
+> A execução direta dos scripts é indicada apenas para usuários com conhecimento técnico ou fins acadêmicos específicos.
 
 ---
 
