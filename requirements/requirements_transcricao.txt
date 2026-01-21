@@ -1,0 +1,31 @@
+# ============================================
+# Transcrição (scripts_base/01_transcricao.py)
+# Ambiente recomendado: Python 3.11.x (64-bit)
+# ============================================
+
+# Evita problema "compiled using NumPy 1.x" com torch 2.2.x
+numpy==1.26.4
+
+# Stack estável (CPU)
+torch==2.2.2
+torchaudio==2.2.2
+
+# WhisperX pipeline
+whisperx==3.7.2
+faster-whisper==0.9.0
+pyannote.audio==3.1.1
+ctranslate2==4.6.0
+onnxruntime==1.23.1
+speechbrain==1.0.3
+deepmultilingualpunctuation==1.0.1
+
+# Utilitários usados no 01
+python-dotenv==1.1.1
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.27.1
+jiwer==4.0.0
+
+# IO/planilhas
+pandas==2.3.3
+openpyxl==3.1.5
+matplotlib==3.9.2
