@@ -1,29 +1,19 @@
-# ============================================
-# Projeto: Tele_IA Transcrição (Pipeline v2)
-# Ambiente estável (Windows / Python 3.11+)
-# ============================================
-
 whisperx==3.7.2
 faster-whisper>=1.1.1
-
-# pyannote precisa ser compatível com whisperx>=3.7.x
 pyannote-audio==3.4.0
 
-torch==2.2.0
-torchaudio==2.2.0
+torch>=2.7.1
+torchaudio>=2.7.1
+
 ctranslate2==4.6.0
 onnxruntime==1.23.1
 speechbrain==1.0.3
 deepmultilingualpunctuation==1.0.1
-
 fuzzywuzzy==0.18.0
 python-Levenshtein==0.27.1
 jiwer==4.0.0
-
-# whisperx exige pandas < 2.3.0
 pandas==2.2.3
 numpy==2.0.2
-
 openpyxl==3.1.5
 python-dotenv==1.1.1
 matplotlib==3.9.2
