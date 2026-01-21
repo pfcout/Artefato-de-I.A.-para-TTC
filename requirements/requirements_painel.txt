@@ -1,0 +1,14 @@
+# ============================================
+# Painel Streamlit (scripts_base/04_painel.py)
+# Ambiente recomendado: Python 3.11.x (64-bit)
+# ============================================
+
+streamlit==1.40.0
+pandas==2.3.3
+numpy==2.3.4
+openpyxl==3.1.5
+
+plotly==6.3.1
+altair==5.5.0
+
+python-dotenv==1.1.1
