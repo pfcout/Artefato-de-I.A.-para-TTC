@@ -5,13 +5,30 @@
 # ==============================================================
 import argparse
 from pathlib import Path
-import os
 import re
 import json
 import time
+import typing
+
 import torch
+import torchaudio  # só para garantir backend/compat (não precisa usar direto)
 import whisperx
 from dotenv import load_dotenv
+
+from omegaconf.listconfig import ListConfig
+from omegaconf.dictconfig import DictConfig
+from omegaconf.base import ContainerMetadata
+
+# ==============================================================
+# PyTorch >= 2.6: allowlist para checkpoints que usam OmegaConf etc.
+# (necessário principalmente quando usar Pyannote)
+# ==============================================================
+torch.serialization.add_safe_globals([
+    ListConfig,
+    DictConfig,
+    ContainerMetadata,
+    typing.Any,
+])
 
 # ==============================================================
 # Inicializações
@@ -204,12 +221,22 @@ def main():
     inicio_total = time.time()
 
     parser = argparse.ArgumentParser(description="WhisperX estável p/ SPIN")
+
     parser.add_argument("--input_dir", required=True)
     parser.add_argument("--dict_path", required=False)
     parser.add_argument("--model", default="small")
     parser.add_argument("--language", default="pt")
     parser.add_argument("--enable_diarization", action="store_true")
     parser.add_argument("--enable_align", action="store_true")
+
+    # ✅ NOVO: escolha de VAD (silero padrão para evitar Pyannote quebrando)
+    parser.add_argument(
+        "--vad",
+        choices=["silero", "pyannote"],
+        default="silero",
+        help="Método de VAD (silero é o padrão estável; pyannote é modo avançado)"
+    )
+
     args = parser.parse_args()
 
     BASE_DIR = Path(__file__).resolve().parent
@@ -237,10 +264,13 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[INFO] Dispositivo: {device}")
 
+    # ✅ whisperx: passa VAD explicitamente para não cair em pyannote à toa
     model = whisperx.load_model(
         args.model,
         device=device,
-        compute_type="int8" if device == "cpu" else "float16"
+        compute_type="int8" if device == "cpu" else "float16",
+        vad_method=args.vad,
+        language=args.language,  # evita "No language specified"
     )
 
     for audio_file in arquivos:
@@ -248,6 +278,8 @@ def main():
         inicio_audio = time.time()
 
         audio = whisperx.load_audio(str(audio_file))
+
+        # ✅ mantém language no transcribe também (consistência)
         result = model.transcribe(audio, batch_size=8, language=args.language)
         segments = result.get("segments", [])
 
