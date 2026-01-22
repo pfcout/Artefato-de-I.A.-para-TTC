@@ -104,7 +104,7 @@ cd Artefato-de-I.A.-para-TTC
 
 ---
 
-## Como ativar/desativar venv (PowerShell – leigo-friendly)
+## Como ativar/desativar venv 
 
 ### Ativar uma venv
 
