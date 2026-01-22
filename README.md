@@ -143,7 +143,7 @@ python -m pip install -U pip setuptools wheel
 
 # (IMPORTANTE) Torch/Torchaudio CPU (evita bugs de torchaudio no Windows)
 pip uninstall -y torch torchaudio torchvision
-pip install --index-url https://download.pytorch.org/whl/cpu torch==2.8.0+cpu torchaudio==2.8.0+cpu
+pip install --index-url https://download.pytorch.org/whl/cpu torch==2.2.0+cpu torchaudio==2.2.0+cpu
 
 # Agora instale o resto
 python -m pip install -r .\requirements\requirements_transcricao.txt
