@@ -97,7 +97,7 @@ Projeto Tele_IA Transcricao/
 
 ## Instalação — do zero (Windows)
 
-## 3 ambientes virtuais 
+## 3 ambientes virtuais
 
 ### 1. Clonar o repositório
 
@@ -108,24 +108,73 @@ cd Artefato-de-I.A.-para-TTC
 
 ---
 
+## Como ativar/desativar venv no PowerShell (leigo-friendly)
+
+✅ **Ativar uma venv** (exemplo):
+
+```powershell
+.\.venv_transcricao\Scripts\Activate.ps1
+```
+
+✅ **Sair da venv** (opção 1 — funciona sempre):
+
+```powershell
+deactivate
+```
+
+Se aparecer: `deactivate : O termo 'deactivate' não é reconhecido`
+➡️ significa que você **já não estava dentro** de uma venv.
+
+✅ **Sair da venv** (opção 2 — “forçado”, se quiser garantir):
+
+* Feche o PowerShell e abra de novo na pasta do projeto.
+
+---
+
 ### 2. Ambiente de TRANSCRIÇÃO (script 01)
+
+> Este é o ambiente mais sensível por causa de dependências de áudio (Torch/Torchaudio).
+> Para evitar erros comuns no Windows, instale Torch/Torchaudio CPU fixos antes do requirements.
 
 ```powershell
 py -3.11 -m venv .venv_transcricao
 .\.venv_transcricao\Scripts\Activate.ps1
 python -m pip install -U pip setuptools wheel
+
+# (IMPORTANTE) Torch/Torchaudio CPU (evita bugs de torchaudio no Windows)
+pip uninstall -y torch torchaudio torchvision
+pip install --index-url https://download.pytorch.org/whl/cpu torch==2.8.0+cpu torchaudio==2.8.0+cpu
+
+# Agora instale o resto
 python -m pip install -r .\requirements\requirements_transcricao.txt
 ```
 
-Executar:
+#### Preparar pasta de áudios (WAV)
+
+Crie a pasta e coloque seus arquivos `.wav` lá dentro:
 
 ```powershell
-python .\scripts_base\01_transcricao.py
+mkdir bd_teste_audio
 ```
+
+✅ **Exemplo**: `bd_teste_audio\01_Abertura.wav`
+
+#### Executar (funcionando)
+
+```powershell
+python .\scripts_base\01_transcricao.py --input_dir bd_teste_audio --model small --language pt
+```
+
+✅ Saídas geradas automaticamente:
+
+* `arquivos_transcritos\txt\`  (transcrições compatíveis com o Zero-Shot)
+* `arquivos_transcritos\json\` (segmentos e logs)
 
 ---
 
-### 3. Ambiente ZERO-SHOT (script 02)
+### 3. Ambiente ZERO-SHOT (script 02 + script 03)
+
+> Este ambiente roda a análise SPIN via LLM (Ollama) e gera planilhas Excel.
 
 ```powershell
 py -3.11 -m venv .venv_zeroshot
@@ -134,15 +183,38 @@ python -m pip install -U pip setuptools wheel
 python -m pip install -r .\requirements\requirements_zero_shot.txt
 ```
 
-Executar:
+#### Executar script 02 (análise SPIN)
+
+Use como entrada os TXT gerados no script 01:
 
 ```powershell
-python .\scripts_base\02_zeroshot.py
+python .\scripts_base\02_zeroshot.py --input_dir .\arquivos_transcritos\txt
 ```
+
+✅ Saída:
+
+* `saida_excel\resultados_completos_SPIN.xlsx`
+
+#### Executar script 03 (avaliação estruturada)
+
+⚠️ Observação importante:
+
+* O script correto é `03_avaliacao_zeroshot.py`
+* `03_metricas.py` **não faz parte** desta versão do projeto.
+
+```powershell
+python .\scripts_base\03_avaliacao_zeroshot.py --input_dir .\arquivos_transcritos\txt
+```
+
+✅ Saída:
+
+* `saida_avaliacao\excel\avaliacao_spin_avancada.xlsx`
 
 ---
 
 ### 4. Ambiente do PAINEL (script 04)
+
+> O painel Streamlit deve ser iniciado com **streamlit run**.
 
 ```powershell
 py -3.11 -m venv .venv_painel
@@ -151,11 +223,23 @@ python -m pip install -U pip setuptools wheel
 python -m pip install -r .\requirements\requirements_painel.txt
 ```
 
-Executar:
+#### Executar (forma correta)
 
 ```powershell
 streamlit run .\scripts_base\04_painel.py
 ```
+
+Depois abra no navegador:
+
+* `http://localhost:8501`
+
+✅ Se aparecer aviso “missing ScriptRunContext”, normalmente é porque alguém tentou rodar com:
+
+```powershell
+python .\scripts_base\04_painel.py
+```
+
+➡️ **Não use `python` para iniciar Streamlit. Use `streamlit run`.**
 
 ---
 
