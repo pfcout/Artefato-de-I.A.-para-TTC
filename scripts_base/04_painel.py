@@ -6,6 +6,7 @@
 # ✅ Feedback/extração DIDÁTICOS e ESPECÍFICOS por etapa
 # ✅ Correção do bug do áudio: fallback automático para evitar mkl_malloc OOM
 # ✅ Limpeza total (sem alterar fluxo): remove pasta de backup quando vazia
+# ✅ SEM escolher Python: auto-detect + sanity check
 # ===============================================
 
 import os
@@ -282,34 +283,47 @@ def achar_script_03() -> Path | None:
 SCRIPT_03 = achar_script_03()
 
 # ==============================
-# 🧠 Seleção de Python por etapa
+# 🧠 Seleção de Python por etapa (AUTO)
 # ==============================
-def pick_python_for_transcription_auto() -> Path | None:
-    env = os.getenv("TRANSCRIBE_PYTHON")
-    if env and Path(env).exists():
-        return Path(env)
-
+def pick_python_for_transcription_candidates() -> list[Path]:
+    """
+    Ordem pensada pra Windows:
+    1) .venv_transcricao (ideal)
+    2) .venv_whisperx
+    3) .venv_metricas
+    4) .venv
+    5) python do sistema
+    """
     candidates = [
         ROOT_DIR / ".venv_transcricao" / "Scripts" / "python.exe",
         ROOT_DIR / ".venv_whisperx" / "Scripts" / "python.exe",
         ROOT_DIR / ".venv_metricas" / "Scripts" / "python.exe",
         ROOT_DIR / ".venv" / "Scripts" / "python.exe",
+        Path(sys.executable),
     ]
+    # mantém só os que existem (sys.executable sempre existe)
+    out = []
     for c in candidates:
-        if c.exists():
-            return c
-    return None
+        try:
+            if c and Path(c).exists():
+                out.append(Path(c))
+        except Exception:
+            pass
+    # remove duplicados preservando ordem
+    seen = set()
+    uniq = []
+    for p in out:
+        s = str(p).lower()
+        if s not in seen:
+            seen.add(s)
+            uniq.append(p)
+    return uniq
 
 
 def pick_python_for_zeroshot() -> Path:
-    env = os.getenv("ZEROSHOT_PYTHON")
-    if env and Path(env).exists():
-        return Path(env)
-
     c = ROOT_DIR / ".venv_zeroshot" / "Scripts" / "python.exe"
     if c.exists():
         return c
-
     return Path(sys.executable)
 
 
@@ -373,11 +387,9 @@ def restore_txts(backup_path: Path):
         shutil.move(str(f), str(TXT_DIR / f.name))
 
 
-# ✅ NOVO: limpeza da pasta de backup (sem risco de perder arquivos)
 def cleanup_backup_dir(backup_path: Path):
     """
     Remove a pasta de backup APENAS se ela estiver vazia.
-    Isso evita apagar arquivos caso a restauração falhe por algum motivo.
     """
     try:
         if backup_path and backup_path.exists():
@@ -689,15 +701,14 @@ def transcribe_with_fallback(py_transcribe: Path, run_dir: Path, model_choice: s
     Se der erro de memória, faz fallback automático para 'small'.
     Retorna (rc, out, model_used)
     """
-    # 1) tentativa com o modelo escolhido
     args01 = ["--input_dir", str(run_dir), "--model", model_choice, "--language", "pt"]
     if diar:
         args01.append("--enable_diarization")
+
     rc1, out1 = run_cmd(py_transcribe, SCRIPT_01, args01, ROOT_DIR, timeout_s=7200)
     if rc1 == 0:
         return rc1, out1, model_choice
 
-    # 2) fallback se for OOM
     if model_choice != "small" and is_oom_mkl(out1):
         args01b = ["--input_dir", str(run_dir), "--model", "small", "--language", "pt"]
         if diar:
@@ -707,6 +718,50 @@ def transcribe_with_fallback(py_transcribe: Path, run_dir: Path, model_choice: s
 
     return rc1, out1, model_choice
 
+
+# ==============================
+# ✅ Sanity check do ambiente de transcrição (sem expor log)
+# ==============================
+def python_can_transcribe(py: Path) -> bool:
+    """
+    Verifica se esse Python consegue ao menos importar dependências básicas da transcrição.
+    Ajuste os imports se seu 01_transcricao.py usar outros pacotes específicos.
+    """
+    probe = (
+        "import sys\n"
+        "mods = ['torch']\n"
+        "ok=True\n"
+        "for m in mods:\n"
+        "    try:\n"
+        "        __import__(m)\n"
+        "    except Exception:\n"
+        "        ok=False\n"
+        "print('OK' if ok else 'NO')\n"
+    )
+    try:
+        p = subprocess.run(
+            [str(py), "-c", probe],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            timeout=25,
+        )
+        out = (p.stdout or "").strip()
+        return (p.returncode == 0) and ("OK" in out)
+    except Exception:
+        return False
+
+
+def pick_python_for_transcription_auto() -> Path | None:
+    for cand in pick_python_for_transcription_candidates():
+        if python_can_transcribe(cand):
+            return cand
+    return None
+
+
+PY_TRANSCRIBE = pick_python_for_transcription_auto()
 
 # ==============================
 # 🧭 Cabeçalho
@@ -719,32 +774,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-# ==============================
-# Sidebar: ajuda
-# ==============================
-with st.sidebar.expander("⚙️ Configuração do Áudio (se necessário)", expanded=False):
-    st.markdown(
-        "<div class='small-muted'>Se o áudio falhar por ambiente da transcrição, "
-        "você pode informar manualmente o Python do ambiente <b>.venv_transcricao</b>.</div>",
-        unsafe_allow_html=True,
-    )
-    manual_py01 = st.text_input(
-        "Python do ambiente de transcrição (opcional)",
-        value=st.session_state.get("manual_py01", ""),
-        placeholder=r"Ex: C:\Projeto...\ .venv_transcricao\Scripts\python.exe",
-        key="manual_py01_input",
-    )
-    if manual_py01.strip():
-        st.session_state["manual_py01"] = manual_py01.strip()
-
-PY_TRANSCRIBE = None
-if st.session_state.get("manual_py01"):
-    p = Path(st.session_state["manual_py01"])
-    if p.exists():
-        PY_TRANSCRIBE = p
-if PY_TRANSCRIBE is None:
-    PY_TRANSCRIBE = pick_python_for_transcription_auto()
 
 # ==============================
 # Abas
@@ -819,7 +848,7 @@ with tab_txt:
                         except Exception:
                             pass
                     restore_txts(backup_path)
-                    cleanup_backup_dir(backup_path)  # ✅ NOVO
+                    cleanup_backup_dir(backup_path)
                 except Exception:
                     pass
 
@@ -833,7 +862,6 @@ with tab_wav:
 
     up_wav = st.file_uploader("Arquivo WAV", type=["wav"], key="uploader_wav")
 
-    # ✅ Ajuste seguro: por padrão, SMALL
     model_choice = st.selectbox(
         "Qualidade da transcrição (recomendado: small no Windows/CPU)",
         ["small", "base", "medium"],
@@ -848,10 +876,11 @@ with tab_wav:
             st.error("Envie um arquivo WAV para continuar.")
             st.stop()
 
-        if PY_TRANSCRIBE is None or not Path(PY_TRANSCRIBE).exists():
+        if PY_TRANSCRIBE is None:
             st.error(
-                "Não foi possível acessar o ambiente de transcrição do áudio.\n\n"
-                "Abra a seção 'Configuração do Áudio' na lateral e informe o Python do ambiente .venv_transcricao."
+                "❌ Não encontrei um ambiente Python pronto para transcrição.\n\n"
+                "✅ Para resolver: crie/ative o ambiente **.venv_transcricao** (ou **.venv_whisperx**) e instale as dependências do 01_transcricao.py.\n"
+                "Depois, abra o painel novamente e tente o upload."
             )
             st.stop()
 
@@ -886,10 +915,9 @@ with tab_wav:
         try:
             progresso_update(bar, status, clock, 1, 3, "Transcrevendo o áudio…", started)
 
-            rc1, out1, model_used = transcribe_with_fallback(Path(PY_TRANSCRIBE), run_dir, model_choice, diar)
+            rc1, out1, model_used = transcribe_with_fallback(PY_TRANSCRIBE, run_dir, model_choice, diar)
 
             if rc1 != 0:
-                # ✅ Mensagem humana (sem log técnico)
                 if is_oom_mkl(out1):
                     st.error(
                         "❌ Não foi possível transcrever o áudio por falta de memória (RAM) no Windows.\n\n"
@@ -898,11 +926,9 @@ with tab_wav:
                     )
                 else:
                     st.error("❌ Não foi possível transcrever o áudio.")
-                # se você quiser ver detalhe só quando dá erro:
                 st.code(out1 if out1 else "(sem detalhes)")
                 st.stop()
 
-            # opcional: avisar quando fez fallback sem assustar
             if model_used != model_choice:
                 st.info("ℹ️ Para evitar falta de memória, a transcrição foi feita automaticamente com o modelo **small**.")
 
@@ -933,7 +959,7 @@ with tab_wav:
         finally:
             try:
                 restore_txts(backup_path)
-                cleanup_backup_dir(backup_path)  # ✅ NOVO
+                cleanup_backup_dir(backup_path)
             except Exception:
                 pass
             try:
