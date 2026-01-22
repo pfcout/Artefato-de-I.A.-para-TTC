@@ -31,6 +31,8 @@ from dotenv import load_dotenv
 import torch
 import whisperx
 
+HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+
 # ==============================================================
 # PyTorch safe globals (evita erro ao carregar alguns checkpoints)
 # (mantém compat com setups mais novos)
