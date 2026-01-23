@@ -7,6 +7,7 @@
 # ✅ Correção do bug do áudio: fallback automático para evitar mkl_malloc OOM
 # ✅ Limpeza total (sem alterar fluxo): remove pasta de backup quando vazia
 # ✅ SEM escolher Python: auto-detect + sanity check
+# ✅ CLOUD READY: se existir TRANSCRIBE_API_URL em st.secrets, usa API (recomendado no Streamlit Cloud)
 # ===============================================
 
 import os
@@ -21,6 +22,11 @@ from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+
+try:
+    import requests  # usado no modo API
+except Exception:
+    requests = None
 
 
 # ==============================
@@ -282,13 +288,52 @@ def achar_script_03() -> Path | None:
 
 SCRIPT_03 = achar_script_03()
 
+
+# ==============================
+# 🔐 MODO API (opcional / recomendado no Cloud)
+# ==============================
+def get_secret(name: str, default: str = "") -> str:
+    try:
+        v = st.secrets.get(name, default)
+        if v is None:
+            return default
+        return str(v).strip()
+    except Exception:
+        return default
+
+
+TRANSCRIBE_API_URL = get_secret("TRANSCRIBE_API_URL", "")
+TRANSCRIBE_API_KEY = get_secret("TRANSCRIBE_API_KEY", "")
+
+USE_API = bool(TRANSCRIBE_API_URL)
+
+
+def transcrever_via_api(wav_bytes: bytes) -> str:
+    if not requests:
+        raise RuntimeError("A biblioteca 'requests' não está disponível. Adicione 'requests' no requirements.txt.")
+    if not TRANSCRIBE_API_URL:
+        raise RuntimeError("TRANSCRIBE_API_URL não configurada.")
+    headers = {}
+    if TRANSCRIBE_API_KEY:
+        headers["X-API-Key"] = TRANSCRIBE_API_KEY
+
+    files = {"file": ("audio.wav", wav_bytes, "audio/wav")}
+    r = requests.post(TRANSCRIBE_API_URL, files=files, headers=headers, timeout=900)
+    r.raise_for_status()
+    data = r.json()
+    txt = (data.get("text") or "").strip()
+    if not txt:
+        raise RuntimeError("A API respondeu sem texto transcrito.")
+    return txt
+
+
 # ==============================
 # 🧠 Seleção de Python por etapa (AUTO)
 # ==============================
 def pick_python_for_transcription_candidates() -> list[Path]:
     """
-    Ordem pensada pra Windows:
-    1) .venv_transcricao (ideal)
+    Ordem pensada pra Windows (local):
+    1) .venv_transcricao
     2) .venv_whisperx
     3) .venv_metricas
     4) .venv
@@ -301,7 +346,6 @@ def pick_python_for_transcription_candidates() -> list[Path]:
         ROOT_DIR / ".venv" / "Scripts" / "python.exe",
         Path(sys.executable),
     ]
-    # mantém só os que existem (sys.executable sempre existe)
     out = []
     for c in candidates:
         try:
@@ -309,7 +353,7 @@ def pick_python_for_transcription_candidates() -> list[Path]:
                 out.append(Path(c))
         except Exception:
             pass
-    # remove duplicados preservando ordem
+
     seen = set()
     uniq = []
     for p in out:
@@ -328,6 +372,7 @@ def pick_python_for_zeroshot() -> Path:
 
 
 PY_ZEROSHOT = pick_python_for_zeroshot()
+
 
 # ==============================
 # 🔧 Execução segura
@@ -368,6 +413,7 @@ def wav_duracao_seg(path: Path) -> float:
             return 0.0
         return frames / float(rate)
 
+
 # ==============================
 # 🔒 Isolamento
 # ==============================
@@ -388,9 +434,7 @@ def restore_txts(backup_path: Path):
 
 
 def cleanup_backup_dir(backup_path: Path):
-    """
-    Remove a pasta de backup APENAS se ela estiver vazia.
-    """
+    """Remove a pasta de backup APENAS se estiver vazia."""
     try:
         if backup_path and backup_path.exists():
             has_any = any(backup_path.iterdir())
@@ -398,6 +442,7 @@ def cleanup_backup_dir(backup_path: Path):
                 shutil.rmtree(backup_path, ignore_errors=True)
     except Exception:
         pass
+
 
 # ==============================
 # 📊 Carregar resultados
@@ -440,6 +485,7 @@ def normalizar_df(df: pd.DataFrame) -> pd.DataFrame:
     )
     return df
 
+
 # ==============================
 # ✅ Validação do TXT
 # ==============================
@@ -451,6 +497,7 @@ def validar_txt(txt: str) -> tuple[bool, str]:
     if not has_tag:
         return False, "Formato inválido. Use linhas começando com [VENDEDOR] e [CLIENTE]."
     return True, "ok"
+
 
 # ==============================
 # ✅ Progresso
@@ -478,6 +525,7 @@ def progresso_update(bar, status, clock, step_idx: int, total_steps: int, title:
         f"<div class='small-muted'>⏱️ Tempo decorrido: <b>{human_time(time.time()-started_at)}</b></div>",
         unsafe_allow_html=True,
     )
+
 
 # ==============================
 # 🧩 Mensagens programadas
@@ -687,6 +735,7 @@ def extracao_programada(fase: str, nota: int) -> str:
 
     return "Extração de dados indisponível para esta fase."
 
+
 # ==============================
 # ✅ Tratamento do erro de memória do WhisperX (mkl_malloc)
 # ==============================
@@ -697,6 +746,7 @@ def is_oom_mkl(err_text: str) -> bool:
 
 def transcribe_with_fallback(py_transcribe: Path, run_dir: Path, model_choice: str, diar: bool) -> tuple[int, str, str]:
     """
+    LOCAL ONLY:
     Tenta transcrever com o modelo escolhido.
     Se der erro de memória, faz fallback automático para 'small'.
     Retorna (rc, out, model_used)
@@ -724,16 +774,16 @@ def transcribe_with_fallback(py_transcribe: Path, run_dir: Path, model_choice: s
 # ==============================
 def python_can_transcribe(py: Path) -> bool:
     """
-    Verifica se esse Python consegue ao menos importar dependências básicas da transcrição.
-    Ajuste os imports se seu 01_transcricao.py usar outros pacotes específicos.
+    Verifica se esse Python consegue importar libs mínimas.
+    Ajuste se o seu 01_transcricao.py exigir outros imports.
     """
     probe = (
-        "import sys\n"
-        "mods = ['torch']\n"
+        "mods=['torch']\n"
         "ok=True\n"
+        "import importlib\n"
         "for m in mods:\n"
         "    try:\n"
-        "        __import__(m)\n"
+        "        importlib.import_module(m)\n"
         "    except Exception:\n"
         "        ok=False\n"
         "print('OK' if ok else 'NO')\n"
@@ -761,7 +811,8 @@ def pick_python_for_transcription_auto() -> Path | None:
     return None
 
 
-PY_TRANSCRIBE = pick_python_for_transcription_auto()
+PY_TRANSCRIBE = None if USE_API else pick_python_for_transcription_auto()
+
 
 # ==============================
 # 🧭 Cabeçalho
@@ -775,10 +826,24 @@ st.markdown(
 )
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
+if USE_API:
+    st.markdown(
+        "<div class='small-muted'><span class='badge'>Áudio via Nuvem</span> "
+        "Transcrição rodando em serviço externo (recomendado no Streamlit Cloud).</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        "<div class='small-muted'><span class='badge'>Áudio local</span> "
+        "Transcrição rodando no ambiente local (Windows). No Streamlit Cloud, prefira configurar a API.</div>",
+        unsafe_allow_html=True,
+    )
+
 # ==============================
 # Abas
 # ==============================
 tab_txt, tab_wav = st.tabs(["📝 Colar transcrição (TXT)", "🎧 Enviar áudio (WAV)"])
+
 
 # ---------- Texto ----------
 with tab_txt:
@@ -852,6 +917,7 @@ with tab_txt:
                 except Exception:
                     pass
 
+
 # ---------- Áudio ----------
 with tab_wav:
     st.markdown("### 🎧 Avaliar a partir de um áudio (WAV)")
@@ -863,41 +929,27 @@ with tab_wav:
     up_wav = st.file_uploader("Arquivo WAV", type=["wav"], key="uploader_wav")
 
     model_choice = st.selectbox(
-        "Qualidade da transcrição (recomendado: small no Windows/CPU)",
+        "Qualidade da transcrição (recomendado: small em CPU)",
         ["small", "base", "medium"],
         index=0,
         key="model_choice",
+        disabled=USE_API,  # se API, essa escolha quem decide é o backend (ou você ignora)
     )
 
-    diar = st.checkbox("Tentar diarização (se estiver configurada)", value=True, key="diarize")
+    diar = st.checkbox("Tentar diarização (se estiver configurada)", value=True, key="diarize", disabled=USE_API)
 
     if st.button("✅ Avaliar áudio", use_container_width=True, key="btn_wav"):
         if up_wav is None:
             st.error("Envie um arquivo WAV para continuar.")
             st.stop()
 
-        if PY_TRANSCRIBE is None:
-            st.error(
-                "❌ Não encontrei um ambiente Python pronto para transcrição.\n\n"
-                "✅ Para resolver: crie/ative o ambiente **.venv_transcricao** (ou **.venv_whisperx**) e instale as dependências do 01_transcricao.py.\n"
-                "Depois, abra o painel novamente e tente o upload."
-            )
-            st.stop()
+        wav_bytes = up_wav.getbuffer().tobytes()
 
-        if not SCRIPT_01.exists():
-            st.error("Não foi possível localizar o módulo de transcrição do áudio.")
-            st.stop()
-        if not SCRIPT_02.exists():
-            st.error("Não foi possível localizar o módulo de análise SPIN.")
-            st.stop()
-        if not SCRIPT_03 or not SCRIPT_03.exists():
-            st.error("Não foi possível localizar o módulo de avaliação (nota humana).")
-            st.stop()
-
+        # Validação de duração: precisa salvar pra ler frames/Hz
         run_dir = UPLOADS_WAV_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         run_dir.mkdir(parents=True, exist_ok=True)
         wav_path = run_dir / "audio.wav"
-        wav_path.write_bytes(up_wav.getbuffer())
+        wav_path.write_bytes(wav_bytes)
 
         try:
             dur = wav_duracao_seg(wav_path)
@@ -905,7 +957,17 @@ with tab_wav:
             dur = 0.0
 
         if dur > 600:
+            shutil.rmtree(run_dir, ignore_errors=True)
             st.error(f"⛔ O áudio tem {dur/60:.1f} minutos. O limite é 10 minutos.")
+            st.stop()
+
+        if not SCRIPT_02.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
+            st.error("Não foi possível localizar o módulo de análise SPIN.")
+            st.stop()
+        if not SCRIPT_03 or not SCRIPT_03.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
+            st.error("Não foi possível localizar o módulo de avaliação (nota humana).")
             st.stop()
 
         backup_path = backup_txts_existentes()
@@ -913,32 +975,62 @@ with tab_wav:
         bar, status, clock = progresso(total_steps=3)
 
         try:
+            # 1) Transcrição
             progresso_update(bar, status, clock, 1, 3, "Transcrevendo o áudio…", started)
 
-            rc1, out1, model_used = transcribe_with_fallback(PY_TRANSCRIBE, run_dir, model_choice, diar)
-
-            if rc1 != 0:
-                if is_oom_mkl(out1):
+            if USE_API:
+                try:
+                    texto_transcrito = transcrever_via_api(wav_bytes)
+                except Exception:
                     st.error(
-                        "❌ Não foi possível transcrever o áudio por falta de memória (RAM) no Windows.\n\n"
-                        "✅ Solução imediata: use o modelo **small** e, se necessário, envie um áudio menor.\n"
-                        "Dica: feche outros programas pesados (navegador com muitas abas, VSCode, etc.) e tente novamente."
+                        "❌ Não foi possível transcrever via nuvem.\n\n"
+                        "Verifique se TRANSCRIBE_API_URL está correta e se a API está online."
                     )
-                else:
-                    st.error("❌ Não foi possível transcrever o áudio.")
-                st.code(out1 if out1 else "(sem detalhes)")
-                st.stop()
+                    st.stop()
 
-            if model_used != model_choice:
-                st.info("ℹ️ Para evitar falta de memória, a transcrição foi feita automaticamente com o modelo **small**.")
+                # ✅ salva no formato que o 02 espera: um txt na pasta TXT_DIR
+                fname = f"painel_wav_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                (TXT_DIR / fname).write_text(texto_transcrito.strip() + "\n", encoding="utf-8")
 
+            else:
+                # LOCAL
+                if PY_TRANSCRIBE is None:
+                    st.error(
+                        "❌ Não encontrei um ambiente Python pronto para transcrição.\n\n"
+                        "✅ Para resolver no Windows: crie/ative o ambiente **.venv_transcricao** (ou **.venv_whisperx**) "
+                        "e instale as dependências do 01_transcricao.py.\n\n"
+                        "💡 No Streamlit Cloud: configure TRANSCRIBE_API_URL nos Secrets e use transcrição via nuvem."
+                    )
+                    st.stop()
+
+                if not SCRIPT_01.exists():
+                    st.error("Não foi possível localizar o módulo de transcrição do áudio (01_transcricao.py).")
+                    st.stop()
+
+                rc1, out1, model_used = transcribe_with_fallback(PY_TRANSCRIBE, run_dir, model_choice, diar)
+                if rc1 != 0:
+                    if is_oom_mkl(out1):
+                        st.error(
+                            "❌ Não foi possível transcrever o áudio por falta de memória (RAM).\n\n"
+                            "✅ Solução imediata: use o modelo **small** e, se necessário, envie um áudio menor."
+                        )
+                    else:
+                        st.error("❌ Não foi possível transcrever o áudio.")
+                    st.code(out1 if out1 else "(sem detalhes)")
+                    st.stop()
+
+                if model_used != model_choice:
+                    st.info("ℹ️ Para evitar falta de memória, a transcrição foi feita automaticamente com o modelo **small**.")
+
+            # 2) SPIN
             progresso_update(bar, status, clock, 2, 3, "Analisando as fases SPIN…", started)
             rc2, out2 = run_cmd(PY_ZEROSHOT, SCRIPT_02, [], ROOT_DIR, timeout_s=7200)
             if rc2 != 0:
-                st.error("❌ Não foi possível analisar a conversa transcrita.")
+                st.error("❌ Não foi possível analisar a conversa.")
                 st.code(out2 if out2 else "(sem detalhes)")
                 st.stop()
 
+            # 3) Nota / avaliação final
             progresso_update(bar, status, clock, 3, 3, "Calculando a pontuação e os feedbacks…", started)
             rc3, out3 = run_cmd(PY_ZEROSHOT, SCRIPT_03, [], ROOT_DIR, timeout_s=7200)
             if rc3 != 0:
@@ -958,10 +1050,21 @@ with tab_wav:
 
         finally:
             try:
+                # remove o txt temporário criado pelo painel (mantém os originais do usuário)
+                for f in TXT_DIR.glob("painel_wav_*.txt"):
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            try:
                 restore_txts(backup_path)
                 cleanup_backup_dir(backup_path)
             except Exception:
                 pass
+
             try:
                 shutil.rmtree(run_dir, ignore_errors=True)
             except Exception:
