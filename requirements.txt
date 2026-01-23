@@ -1,1 +1,2 @@
 -r requirements/requirements_painel.txt
+requests
