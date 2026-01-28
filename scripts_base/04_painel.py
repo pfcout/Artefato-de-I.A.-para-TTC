@@ -1,10 +1,11 @@
 # ===============================================
 # 🎧 SPIN Analyzer — Painel Acadêmico (TXT ou Áudio)
-# PARTE 1/3 — BASE (helpers + layout + sidebar + render)
-# ✅ Mantém modo LOCAL (venvs + scripts)
-# ✅ Suporta modo VPS (APIs) quando configurado
-# ✅ NÃO inclui telas (Individual / Lote / Resultado) — isso vem na PARTE 2 e 3
-# ✅ Removido texto extra (Secrets/Cloud) do painel
+# ✅ AUTO:
+#    - Se VPS configurado -> usa VPS
+#    - Senão -> usa LOCAL
+# ✅ Sem opções de escolha no painel
+# ✅ Corrigido payload do analyze_api (usa "text")
+# ✅ Mantém isolamento de TXT para não sujar o projeto
 # ===============================================
 
 import os
@@ -372,7 +373,7 @@ def wav_duracao_seg(path: Path) -> float:
 
 
 # ==============================
-# 🌐 VPS — helpers (sem expor textos extras no painel)
+# 🌐 VPS — helpers
 # ==============================
 def get_transcribe_vps_url() -> str:
     url = os.getenv("TRANSCRIBE_API_URL", "").strip()
@@ -394,6 +395,16 @@ def get_analyze_vps_url() -> str:
     return url
 
 
+def vps_ready() -> bool:
+    # para áudio precisa do transcribe + analyze
+    return bool(get_transcribe_vps_url()) and bool(get_analyze_vps_url()) and (requests is not None)
+
+
+def vps_ready_analyze_only() -> bool:
+    # para TXT basta analyze
+    return bool(get_analyze_vps_url()) and (requests is not None)
+
+
 def transcribe_vps_wav_to_labeled_text(wav_bytes: bytes, filename: str = "audio.wav") -> dict:
     if requests is None:
         raise RuntimeError("Dependência 'requests' não instalada.")
@@ -407,15 +418,24 @@ def transcribe_vps_wav_to_labeled_text(wav_bytes: bytes, filename: str = "audio.
 
 
 def analyze_vps_text(text_labeled: str, filename: str) -> dict:
+    """
+    Corrigido para bater com sua API:
+      POST /analyze
+      body: {"text": "...", "filename": "..."}
+    Retorno esperado:
+      {"ok": true, "arquivo": "...", "resultado": {...}}
+    """
     if requests is None:
         raise RuntimeError("Dependência 'requests' não instalada.")
     url = get_analyze_vps_url()
     if not url:
         raise RuntimeError("ANALYZE_API_URL não configurado.")
-    payload = {"text_labeled": text_labeled, "filename": filename}
+
+    payload = {"text": text_labeled, "filename": filename}
     r = requests.post(url, json=payload, timeout=7200)
     r.raise_for_status()
-    return r.json()
+    data = r.json() if r.content else {}
+    return data
 
 
 def save_transcription_to_txt_dir(text_labeled: str, prefix: str) -> Path:
@@ -478,7 +498,10 @@ def carregar_resultado_final() -> pd.DataFrame | None:
 
 def normalizar_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df["arquivo"] = df["arquivo"].astype(str) if "arquivo" in df.columns else ""
+    if "arquivo" in df.columns:
+        df["arquivo"] = df["arquivo"].astype(str)
+    else:
+        df["arquivo"] = ""
 
     for col in ["nota_final", "pontuacao_total", "pontuacao_base"]:
         if col in df.columns:
@@ -795,91 +818,17 @@ def transcribe_with_fallback(py_transcribe: Path, run_dir: Path, model_choice: s
 
 
 # ==============================
-# 🧭 Navegação interna (2 painéis)
+# Helpers do painel (auto)
 # ==============================
-if "view" not in st.session_state:
-    st.session_state["view"] = "single"  # single | batch
+def require_local_scripts_for_analysis():
+    if not SCRIPT_02.exists():
+        st.error("O módulo de análise local não está disponível neste ambiente.")
+        st.stop()
+    if not SCRIPT_03 or not SCRIPT_03.exists():
+        st.error("O módulo de nota local não está disponível neste ambiente.")
+        st.stop()
 
 
-def go_single():
-    st.session_state["view"] = "single"
-    st.rerun()
-
-
-def go_batch():
-    st.session_state["view"] = "batch"
-    st.rerun()
-
-
-# ==============================
-# Sidebar: navegação + config local + status VPS
-# (sem textos extras para o cliente)
-# ==============================
-with st.sidebar:
-    st.markdown("### 🧭 Navegação")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.button("👤 Individual", use_container_width=True, on_click=go_single)
-    with c2:
-        st.button("📊 Visão Gerencial", use_container_width=True, on_click=go_batch)
-
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-    with st.expander("⚙️ Configuração do Áudio (LOCAL)", expanded=False):
-        st.markdown(
-            "<div class='small-muted'>Se o áudio falhar no modo local, informe o Python do ambiente "
-            "<b>.venv_transcricao</b>.</div>",
-            unsafe_allow_html=True,
-        )
-        manual_py01 = st.text_input(
-            "Python da transcrição (opcional)",
-            value=st.session_state.get("manual_py01", ""),
-            placeholder=r"Ex: C:\Projeto...\ .venv_transcricao\Scripts\python.exe",
-            key="manual_py01_input",
-        )
-        if manual_py01.strip():
-            st.session_state["manual_py01"] = manual_py01.strip()
-
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-    st.markdown("### 🌐 Status do Servidor")
-
-    vps_t_url = get_transcribe_vps_url()
-    vps_a_url = get_analyze_vps_url()
-    vps_ok = bool(vps_t_url) and bool(vps_a_url) and (requests is not None)
-
-    if vps_ok:
-        st.success("Servidor conectado ✅")
-    else:
-        st.info("Servidor não configurado (modo local disponível).")
-
-
-# ==============================
-# Detectar PY_TRANSCRIBE local
-# ==============================
-PY_TRANSCRIBE = None
-if st.session_state.get("manual_py01"):
-    p = Path(st.session_state["manual_py01"])
-    if p.exists():
-        PY_TRANSCRIBE = p
-if PY_TRANSCRIBE is None:
-    PY_TRANSCRIBE = pick_python_for_transcription_auto()
-
-
-# ==============================
-# Cabeçalho
-# ==============================
-st.markdown("## 🎧 SPIN Analyzer — Avaliação de Ligações")
-st.markdown(
-    "<div class='small-muted'>Cole transcrição <b>[VENDEDOR]</b>/<b>[CLIENTE]</b> ou envie WAV. "
-    "Use <b>Individual</b> para 1 ligação e <b>Visão Gerencial</b> para até 10 entradas.</div>",
-    unsafe_allow_html=True,
-)
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-
-# ==============================
-# Render helpers
-# ==============================
 def build_phase_scores_from_row(row: pd.Series) -> dict:
     return {
         "abertura": clamp_int(row.get("abertura_nota_humana", 0), 0, 5),
@@ -959,51 +908,25 @@ def render_avaliacao_completa(filename: str, row: pd.Series):
             unsafe_allow_html=True,
         )
 
-# ========= FIM DA PARTE 1/3 =========
-
-# ===============================================
-# PARTE 2/3 — TELA: INDIVIDUAL (TXT + WAV)
-# ===============================================
-
-# ==============================
-# Helpers específicos do painel
-# ==============================
-def require_local_scripts_for_analysis():
-    """Garante que o modo local tem os scripts necessários."""
-    if not SCRIPT_02.exists():
-        st.error("O módulo de análise local não está disponível neste ambiente.")
-        st.stop()
-    if not SCRIPT_03 or not SCRIPT_03.exists():
-        st.error("O módulo de nota local não está disponível neste ambiente.")
-        st.stop()
-
 
 def show_result_after_run(prefer_file: str | None = None):
-    """
-    Mostra a avaliação detalhada:
-    - se prefer_file existir no Excel -> mostra ele
-    - senão mostra o mais recente do Excel
-    """
     df = get_df_resultados()
     if df is None or df.empty:
-        st.warning("Ainda não há resultados para mostrar.")
+        st.warning("Processou, mas ainda não há resultados para exibir.")
         return
 
     if "arquivo" not in df.columns or df["arquivo"].astype(str).nunique() == 0:
         st.warning("O Excel não possui coluna 'arquivo' para detalhamento.")
         return
 
+    # tenta prefer_file, senão último do excel
     arquivo_foco = None
-
     if prefer_file:
-        row = pick_row_by_file(df, prefer_file)
-        if row is not None:
+        row_try = pick_row_by_file(df, prefer_file)
+        if row_try is not None:
             arquivo_foco = prefer_file
-        else:
-            arquivo_foco = None
 
-    if arquivo_foco is None:
-        # tenta o último arquivo (última linha)
+    if not arquivo_foco:
         try:
             arquivo_foco = str(df.iloc[-1]["arquivo"])
         except Exception:
@@ -1022,6 +945,85 @@ def show_result_after_run(prefer_file: str | None = None):
     st.markdown("## ✅ Resultado da avaliação")
     render_avaliacao_completa(str(arquivo_foco), row)
 
+
+# ==============================
+# 🧭 Navegação interna (2 painéis)
+# ==============================
+if "view" not in st.session_state:
+    st.session_state["view"] = "single"  # single | batch
+
+
+def go_single():
+    st.session_state["view"] = "single"
+    st.rerun()
+
+
+def go_batch():
+    st.session_state["view"] = "batch"
+    st.rerun()
+
+
+# ==============================
+# Sidebar (sem textos extras)
+# ==============================
+with st.sidebar:
+    st.markdown("### 🧭 Navegação")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.button("👤 Individual", use_container_width=True, on_click=go_single)
+    with c2:
+        st.button("📊 Visão Gerencial", use_container_width=True, on_click=go_batch)
+
+    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+    with st.expander("⚙️ Configuração do Áudio (LOCAL)", expanded=False):
+        st.markdown(
+            "<div class='small-muted'>Se o áudio falhar no modo local, informe o Python do ambiente "
+            "<b>.venv_transcricao</b>.</div>",
+            unsafe_allow_html=True,
+        )
+        manual_py01 = st.text_input(
+            "Python da transcrição (opcional)",
+            value=st.session_state.get("manual_py01", ""),
+            placeholder=r"Ex: C:\Projeto...\ .venv_transcricao\Scripts\python.exe",
+            key="manual_py01_input",
+        )
+        if manual_py01.strip():
+            st.session_state["manual_py01"] = manual_py01.strip()
+
+    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+    st.markdown("### 🌐 Status do Servidor")
+
+    if vps_ready():
+        st.success("Servidor conectado ✅")
+    elif vps_ready_analyze_only():
+        st.success("Servidor de avaliação conectado ✅")
+    else:
+        st.info("Servidor não configurado (modo local disponível).")
+
+
+# ==============================
+# Detectar PY_TRANSCRIBE local
+# ==============================
+PY_TRANSCRIBE = None
+if st.session_state.get("manual_py01"):
+    p = Path(st.session_state["manual_py01"])
+    if p.exists():
+        PY_TRANSCRIBE = p
+if PY_TRANSCRIBE is None:
+    PY_TRANSCRIBE = pick_python_for_transcription_auto()
+
+
+# ==============================
+# Cabeçalho
+# ==============================
+st.markdown("## 🎧 SPIN Analyzer — Avaliação de Ligações")
+st.markdown(
+    "<div class='small-muted'>Cole transcrição <b>[VENDEDOR]</b>/<b>[CLIENTE]</b> ou envie WAV. "
+    "Use <b>Individual</b> para 1 ligação e <b>Visão Gerencial</b> para até 10 entradas.</div>",
+    unsafe_allow_html=True,
+)
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # ==============================
 # TELA: INDIVIDUAL
@@ -1051,8 +1053,7 @@ if st.session_state["view"] == "single":
                 st.error(msg)
                 st.stop()
 
-            # Decide VPS vs Local (silencioso)
-            use_vps = bool(get_analyze_vps_url()) and (requests is not None)
+            use_vps = vps_ready_analyze_only()
 
             if not use_vps:
                 require_local_scripts_for_analysis()
@@ -1065,25 +1066,20 @@ if st.session_state["view"] == "single":
             fname = f"painel_txt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 
             try:
-                # cria o txt temporário para manter compatibilidade com o pipeline
                 (TXT_DIR / fname).write_text(txt_input.strip() + "\n", encoding="utf-8")
-
                 progresso_update(bar, status, clock, 1, 2, "Processando a avaliação…", started)
 
                 if use_vps:
-                    # VPS avalia direto com o texto rotulado
                     try:
                         resp = analyze_vps_text(txt_input.strip(), filename=fname)
                         if not resp.get("ok"):
-                            st.error("Não foi possível avaliar este texto no momento. Tente novamente.")
+                            st.error("Não foi possível avaliar este texto no momento.")
                             st.stop()
                         arquivo_gerado = str(resp.get("arquivo", fname))
                     except Exception:
-                        st.error("Não foi possível conectar ao servidor de avaliação. Tente novamente.")
+                        st.error("Não foi possível conectar ao servidor de avaliação.")
                         st.stop()
-
                 else:
-                    # Local: roda 02 e 03
                     rc2, _ = run_cmd(PY_ZEROSHOT, SCRIPT_02, [], ROOT_DIR, timeout_s=3600)
                     if rc2 != 0:
                         st.error("Não foi possível avaliar este texto no modo local.")
@@ -1105,15 +1101,13 @@ if st.session_state["view"] == "single":
                     unsafe_allow_html=True,
                 )
 
-                # Guardar referência para a tela Resultado (parte 3 também usa isso)
                 st.session_state["last_processed_files"] = [arquivo_gerado] if arquivo_gerado else []
                 st.session_state["last_run_done"] = True
 
-                # Mostra resultado já aqui (pra não parecer que travou)
                 show_result_after_run(prefer_file=arquivo_gerado)
 
             finally:
-                # limpa txt temporário do painel
+                # remove txt temporário do painel
                 try:
                     for f in TXT_DIR.glob("painel_txt_*.txt"):
                         try:
@@ -1123,7 +1117,6 @@ if st.session_state["view"] == "single":
                 except Exception:
                     pass
 
-                # restaura TXT do projeto
                 try:
                     restore_txts(backup_path)
                     cleanup_backup_dir(backup_path)
@@ -1134,22 +1127,16 @@ if st.session_state["view"] == "single":
     with tab_wav:
         st.markdown("### 🎧 Avaliar a partir de um áudio (WAV)")
         st.markdown(
-            "<div class='small-muted'>Envie um WAV de até 10 minutos. "
-            "Se o servidor estiver conectado, o modo VPS é o mais recomendado.</div>",
+            "<div class='small-muted'>Envie um WAV de até 10 minutos.</div>",
             unsafe_allow_html=True,
         )
 
         up_wav = st.file_uploader("Arquivo WAV", type=["wav"], key="uploader_wav_single")
 
-        vps_disponivel = bool(get_transcribe_vps_url()) and bool(get_analyze_vps_url()) and (requests is not None)
+        # AUTO: se VPS está pronto, usa VPS; senão usa local
+        use_vps_audio = vps_ready()
 
-        fonte_transcricao = st.selectbox(
-            "Fonte da transcrição",
-            ["Local (seu 01_transcricao.py)", "VPS (recomendado)"] if vps_disponivel else ["Local (seu 01_transcricao.py)"],
-            index=0,
-            key="fonte_transcricao_single",
-        )
-
+        # No LOCAL ainda permitimos escolher qualidade (isso não “quebra o cliente”, é interno de operação)
         model_choice = st.selectbox(
             "Qualidade da transcrição (LOCAL) — recomendado: small",
             ["small", "base", "medium"],
@@ -1158,25 +1145,19 @@ if st.session_state["view"] == "single":
         )
         diar = st.checkbox("Tentar diarização (LOCAL)", value=True, key="diarize_single")
 
-        if fonte_transcricao.startswith("VPS") and vps_disponivel:
-            st.markdown("<span class='badge'>Servidor ativo</span>", unsafe_allow_html=True)
-
         if st.button("✅ Avaliar áudio", use_container_width=True, key="btn_wav_single"):
             if up_wav is None:
                 st.error("Envie um arquivo WAV para continuar.")
                 st.stop()
 
-            # Se NÃO for VPS, precisa scripts locais (02/03)
-            if not fonte_transcricao.startswith("VPS"):
+            if not use_vps_audio:
                 require_local_scripts_for_analysis()
 
-            # salva WAV temporário
             run_dir = UPLOADS_WAV_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             run_dir.mkdir(parents=True, exist_ok=True)
             wav_path = run_dir / "audio.wav"
             wav_path.write_bytes(up_wav.getbuffer())
 
-            # valida duração
             try:
                 dur = wav_duracao_seg(wav_path)
             except Exception:
@@ -1199,14 +1180,14 @@ if st.session_state["view"] == "single":
                 progresso_update(bar, status, clock, 1, 3, "Transcrevendo o áudio…", started)
 
                 # ===== VPS =====
-                if fonte_transcricao.startswith("VPS"):
+                if use_vps_audio:
                     try:
                         wav_bytes = up_wav.getbuffer().tobytes()
                         data_vps = transcribe_vps_wav_to_labeled_text(wav_bytes, filename=up_wav.name)
                         text_labeled = (data_vps.get("text_labeled") or "").strip()
 
                         if not text_labeled:
-                            st.error("A transcrição veio vazia. Tente novamente com outro áudio.")
+                            st.error("A transcrição veio vazia. Tente novamente.")
                             st.stop()
 
                         out_txt_path = save_transcription_to_txt_dir(text_labeled, prefix="painel_wav_vps")
@@ -1224,13 +1205,13 @@ if st.session_state["view"] == "single":
 
                         resp = analyze_vps_text(text_labeled, filename=str(out_txt_path.name))
                         if not resp.get("ok"):
-                            st.error("Não foi possível avaliar este áudio no momento. Tente novamente.")
+                            st.error("Não foi possível avaliar este áudio no momento.")
                             st.stop()
 
                         arquivo_gerado = str(resp.get("arquivo", out_txt_path.name))
 
                     except Exception:
-                        st.error("Não foi possível conectar ao servidor. Tente novamente.")
+                        st.error("Não foi possível conectar ao servidor.")
                         st.stop()
 
                 # ===== LOCAL =====
@@ -1246,7 +1227,7 @@ if st.session_state["view"] == "single":
                     rc1, out1, _ = transcribe_with_fallback(Path(PY_TRANSCRIBE), run_dir, model_choice, diar)
                     if rc1 != 0:
                         if is_oom_mkl(out1):
-                            st.error("Falta de memória ao transcrever localmente. Use o modelo small ou envie um áudio menor.")
+                            st.error("Falta de memória ao transcrever localmente. Use small ou áudio menor.")
                         else:
                             st.error("Não foi possível transcrever o áudio no modo local.")
                         st.stop()
@@ -1255,7 +1236,7 @@ if st.session_state["view"] == "single":
 
                     rc2, _ = run_cmd(PY_ZEROSHOT, SCRIPT_02, [], ROOT_DIR, timeout_s=7200)
                     if rc2 != 0:
-                        st.error("Não foi possível avaliar a conversa no modo local.")
+                        st.error("Não foi possível avaliar no modo local.")
                         st.stop()
 
                     progresso_update(bar, status, clock, 3, 3, "Finalizando a nota…", started)
@@ -1265,7 +1246,6 @@ if st.session_state["view"] == "single":
                         st.error("Não foi possível finalizar a nota no modo local.")
                         st.stop()
 
-                    # No local, a referência de arquivo pode não bater com precisão; usamos o mais recente depois.
                     arquivo_gerado = None
 
                 bar.progress(1.0)
@@ -1278,31 +1258,19 @@ if st.session_state["view"] == "single":
                 st.session_state["last_processed_files"] = [arquivo_gerado] if arquivo_gerado else []
                 st.session_state["last_run_done"] = True
 
-                # Mostra resultado (preferindo arquivo_gerado, senão pega o último do Excel)
                 show_result_after_run(prefer_file=arquivo_gerado)
 
             finally:
-                # restaura TXT do projeto
                 try:
                     restore_txts(backup_path)
                     cleanup_backup_dir(backup_path)
                 except Exception:
                     pass
 
-                # limpa pasta temporária do wav
                 try:
                     shutil.rmtree(run_dir, ignore_errors=True)
                 except Exception:
                     pass
-
-# Se não for "single", a PARTE 3 cuida do resto (Visão Gerencial + Resultado geral)
-# ===============================================
-# FIM DA PARTE 2/3
-# ===============================================
-
-# ===============================================
-# PARTE 3/3 — VISÃO GERENCIAL (até 10) + RESULTADO FINAL
-# ===============================================
 
 # ==============================
 # TELA: VISÃO GERENCIAL (até 10)
@@ -1310,20 +1278,20 @@ if st.session_state["view"] == "single":
 else:
     st.markdown("### 📊 SPIN – Visão Gerencial")
     st.markdown(
-        "<div class='small-muted'>Envie até <b>10</b> ligações (TXT ou WAV). "
-        "O painel retorna a <b>avaliação completa por ligação</b> e também a <b>pontuação total do lote</b>.</div>",
+        "<div class='small-muted'>Envie até <b>10</b> ligações (TXT ou WAV).</div>",
         unsafe_allow_html=True,
     )
     st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
     tipo_lote = st.selectbox(
         "Tipo de entrada",
-        ["TXT (arquivos .txt ou colar vários)", "WAV (áudios .wav — recomendado servidor)"],
+        ["TXT (arquivos .txt ou colar vários)", "WAV (áudios .wav)"],
         index=0,
         key="tipo_lote",
     )
 
-    vps_disponivel = bool(get_transcribe_vps_url()) and bool(get_analyze_vps_url()) and (requests is not None)
+    usar_servidor_para_txt = vps_ready_analyze_only()
+    usar_servidor_para_wav = vps_ready()
 
     # ==========================
     # LOTE TXT
@@ -1341,14 +1309,6 @@ else:
             unsafe_allow_html=True,
         )
         multi_txt = st.text_area("Cole aqui (separe com ---)", height=220, value="", key="multi_txt_batch")
-
-        usar_servidor_txt = False
-        if vps_disponivel:
-            usar_servidor_txt = st.toggle(
-                "Usar servidor para avaliar TXT (recomendado)",
-                value=True,
-                key="toggle_vps_txt",
-            )
 
         if st.button("✅ Rodar lote (TXT)", use_container_width=True, key="btn_batch_txt"):
             entradas = []
@@ -1373,7 +1333,6 @@ else:
                 st.error("Envie TXT(s) ou cole pelo menos um bloco.")
                 st.stop()
 
-            # Validar todos
             erros = []
             for name, txt in entradas:
                 ok, msg = validar_txt(txt)
@@ -1385,8 +1344,7 @@ else:
                     st.write(f"- **{name}**: {msg}")
                 st.stop()
 
-            # Se for local, precisa scripts
-            if not usar_servidor_txt:
+            if not usar_servidor_para_txt:
                 require_local_scripts_for_analysis()
 
             backup_path = backup_txts_existentes()
@@ -1400,7 +1358,6 @@ else:
             try:
                 progresso_update(bar, status, clock, 1, 3, "Preparando entradas…", started)
 
-                # Cria arquivos no TXT_DIR (mantém compatibilidade com Excel e histórico)
                 for idx, (name, txt) in enumerate(entradas, start=1):
                     safe_stem = re.sub(r"[^a-zA-Z0-9_\-\.]", "_", Path(name).stem)
                     fname = f"{batch_id}_{idx:02d}_{safe_stem}.txt"
@@ -1409,8 +1366,7 @@ else:
 
                 progresso_update(bar, status, clock, 2, 3, "Avaliando o lote…", started)
 
-                if usar_servidor_txt:
-                    # Avalia 1 a 1 no servidor (cada ligação vira um item no Excel)
+                if usar_servidor_para_txt:
                     for fname in arquivos_criados:
                         text_labeled = (TXT_DIR / fname).read_text(encoding="utf-8", errors="ignore")
                         try:
@@ -1422,7 +1378,6 @@ else:
                         except Exception:
                             arquivos_processados.append(fname)
                 else:
-                    # Local: roda 02 e 03 uma vez para o lote
                     rc2, _ = run_cmd(PY_ZEROSHOT, SCRIPT_02, [], ROOT_DIR, timeout_s=7200)
                     if rc2 != 0:
                         st.error("Não foi possível avaliar o lote no modo local.")
@@ -1448,11 +1403,9 @@ else:
                     st.stop()
 
                 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
                 st.markdown("### ✅ Resultados do Lote (Excel)")
                 st.dataframe(df_lote, use_container_width=True)
 
-                # Pontuação total do lote
                 if "arquivo" in df_lote.columns:
                     files = sorted(df_lote["arquivo"].astype(str).unique().tolist())
                 else:
@@ -1471,7 +1424,6 @@ else:
                             soma_score += score_total_25(ps)
                             rows_map[fname] = row
 
-                    # qualidade média aproximada do lote
                     media_por_ligacao = int(round(soma_score / max(total_ligacoes, 1)))
                     qualidade_label, qualidade_tag = label_qualidade_por_score25(media_por_ligacao)
 
@@ -1485,7 +1437,7 @@ else:
     <span class="pill"><span class="k">Pontuação total</span> <span class="v">{soma_score}/{max_total}</span></span>
     <span class="tag {qualidade_tag}">{qualidade_label}</span>
   </div>
-  <div class="lead">Abaixo está a avaliação completa de cada ligação (Abertura + SPIN).</div>
+  <div class="lead">Abaixo está a avaliação completa de cada ligação.</div>
 </div>
 """,
                         unsafe_allow_html=True,
@@ -1498,8 +1450,6 @@ else:
 
                     st.session_state["last_processed_files"] = files
                     st.session_state["last_run_done"] = True
-                else:
-                    st.info("Resultados carregados, mas não foi possível montar o detalhamento por item (sem coluna 'arquivo').")
 
             finally:
                 try:
@@ -1512,22 +1462,11 @@ else:
     # LOTE WAV
     # ==========================
     else:
-        st.markdown(
-            "<div class='small-muted'>No lote WAV, o modo servidor é o mais recomendado (transcrição + avaliação no servidor).</div>",
-            unsafe_allow_html=True,
-        )
         up_wavs = st.file_uploader(
             "Envie até 10 WAVs",
             type=["wav"],
             accept_multiple_files=True,
             key="uploader_wav_batch",
-        )
-
-        fonte_lote = st.selectbox(
-            "Fonte da transcrição (lote)",
-            ["Servidor (recomendado)"] if vps_disponivel else ["Local (seu 01_transcricao.py)"],
-            index=0,
-            key="fonte_transcricao_batch",
         )
 
         model_choice = st.selectbox(
@@ -1546,7 +1485,7 @@ else:
                 st.error("Limite: 10 WAVs por lote.")
                 st.stop()
 
-            usando_servidor = fonte_lote.startswith("Servidor")
+            usando_servidor = usar_servidor_para_wav
 
             if not usando_servidor:
                 require_local_scripts_for_analysis()
@@ -1564,7 +1503,7 @@ else:
                 for idx, wavf in enumerate(up_wavs, start=1):
                     wav_bytes = wavf.getbuffer().tobytes()
 
-                    # valida duração (aviso)
+                    # duração (aviso)
                     try:
                         tmp_dir = UPLOADS_WAV_DIR / f"run_{batch_id}_{idx:02d}"
                         tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -1583,7 +1522,6 @@ else:
                             st.error(f"A transcrição veio vazia para {wavf.name}.")
                             st.stop()
 
-                        # salva TXT rotulado para histórico + Excel
                         fname_path = save_transcription_to_txt_dir(text_labeled, prefix=f"{batch_id}_{idx:02d}")
                         txt_name = fname_path.name
 
@@ -1596,7 +1534,6 @@ else:
                             arquivos_processados.append(txt_name)
 
                     else:
-                        # LOCAL
                         if PY_TRANSCRIBE is None or not Path(PY_TRANSCRIBE).exists():
                             st.error("Modo local não configurado. Configure o Python da transcrição na lateral.")
                             st.stop()
@@ -1645,7 +1582,6 @@ else:
                 st.markdown("### ✅ Resultados do Lote (Excel)")
                 st.dataframe(df_lote, use_container_width=True)
 
-                # detalhamento por ligação
                 if "arquivo" in df_lote.columns:
                     files = sorted(df_lote["arquivo"].astype(str).unique().tolist())
                 else:
@@ -1677,7 +1613,7 @@ else:
     <span class="pill"><span class="k">Pontuação total</span> <span class="v">{soma_score}/{max_total}</span></span>
     <span class="tag {qualidade_tag}">{qualidade_label}</span>
   </div>
-  <div class="lead">Abaixo está a avaliação completa de cada ligação (Abertura + SPIN).</div>
+  <div class="lead">Abaixo está a avaliação completa de cada ligação.</div>
 </div>
 """,
                         unsafe_allow_html=True,
@@ -1690,8 +1626,6 @@ else:
 
                     st.session_state["last_processed_files"] = files
                     st.session_state["last_run_done"] = True
-                else:
-                    st.info("Resultados carregados. (Sem coluna 'arquivo' para detalhar por item.)")
 
             finally:
                 try:
@@ -1702,7 +1636,7 @@ else:
 
 
 # ==============================
-# RESULTADO FINAL (sempre disponível)
+# RESULTADO FINAL
 # ==============================
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 st.markdown("## 📊 Resultado")
@@ -1714,7 +1648,6 @@ else:
     if "arquivo" not in df.columns or df["arquivo"].astype(str).nunique() == 0:
         st.info("Resultados disponíveis, mas não há coluna 'arquivo' para seleção detalhada.")
     else:
-        # tenta destacar o último processado
         last_files = st.session_state.get("last_processed_files", []) or []
         arquivos_disponiveis = sorted(df["arquivo"].astype(str).unique().tolist())
 
@@ -1741,7 +1674,3 @@ st.markdown(
     "<div class='small-muted' style='text-align:center;'>SPIN Analyzer — Projeto Tele_IA 2025 | Desenvolvido por Paulo Coutinho</div>",
     unsafe_allow_html=True,
 )
-
-# ===============================================
-# FIM DA PARTE 3/3
-# ===============================================
