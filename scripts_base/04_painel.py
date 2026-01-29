@@ -303,7 +303,7 @@ def label_qualidade_por_score25(score25: int) -> tuple[str, str]:
 
 def msg_geral_por_score25(score25: int) -> str:
     if score25 <= 6:
-        return return (
+        return (
     "A pontuação indica uma execução muito fraca do método SPIN. "
     "A conversa se manteve predominantemente reativa e operacional, "
     "com ausência de enquadramento claro e pouco ou nenhum diagnóstico estruturado. "
@@ -312,7 +312,7 @@ def msg_geral_por_score25(score25: int) -> str:
 )
 
     if score25 <= 12:
-        return return (
+        return (
     "A avaliação revela sinais iniciais de estrutura consultiva, porém com execução instável. "
     "Algumas etapas do método SPIN aparecem de forma pontual, mas sem profundidade ou encadeamento lógico. "
     "Há pouca consistência nos follow-ups e baixa consolidação de impacto e valor, "
@@ -320,14 +320,14 @@ def msg_geral_por_score25(score25: int) -> str:
 )
 
     if score25 <= 18:
-        return return (
+       return (
     "A conversa apresenta uma boa base de execução do método SPIN. "
     "Há direcionamento, perguntas relevantes e início de diagnóstico consultivo. "
     "Entretanto, ainda existem oportunidades claras de evolução, principalmente na quantificação das dores, "
     "na exploração mais profunda das implicações e na conexão explícita entre problema, impacto e benefício."
 )
 
-        return "return (
+       return (
     "A avaliação indica uma execução forte e consistente do método SPIN. "
     "A conversa demonstra controle de abertura, bom encadeamento de diagnóstico e exploração adequada de impacto. "
     "Como ajuste final, recomenda-se consolidar melhor os critérios de sucesso, "
