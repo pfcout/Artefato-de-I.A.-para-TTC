@@ -586,13 +586,15 @@ def processar_wav_unico(wav_file):
     st.dataframe(df, use_container_width=True)
 
     arquivo_foco = str(resp.get("arquivo", fname))
-    row = pick_row_by_file(df, arquivo_foco) or (df.iloc[-1] if not df.empty else None)
 
-    if row is not None:
-        st.markdown("---")
-        st.markdown("## ✅ Resultado detalhado")
-        render_avaliacao_completa(arquivo_foco, row)
+row = pick_row_by_file(df, arquivo_foco)
+if row is None:
+    row = df.iloc[-1] if not df.empty else None
 
+if row is not None:
+    st.markdown("---")
+    st.markdown("## ✅ Resultado detalhado")
+    render_avaliacao_completa(arquivo_foco, row)
 
 # ==============================
 # 🔁 Execução: Lote TXT (até 10)
