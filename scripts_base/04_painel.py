@@ -56,27 +56,50 @@ body {
 h1, h2, h3 {
   color: #0B63F3;
 }
-.card {
-  background: #FFFFFF;
-  border: 1px solid #D6E4FF;
-  border-radius: 14px;
-  padding: 16px;
+.card{
+  background: #FFFFFF !important;
+  color: #0B1220 !important;
+  border: 1px solid #C7D6F5 !important;
+  border-radius: 18px;
+  padding: 18px;
   margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(11,18,32,0.08);
 }
-.badge {
+
+/* força texto escuro dentro do card (resolve letra branca) */
+.card *{
+  color: #0B1220 !important;
+}
+
+/* badges */
+.badge{
+  display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
-  font-weight: 700;
+  border: 1px solid #AFC7F3 !important;
+  background: #F6F9FF !important;
+  color: #0B63F3 !important;
+  font-weight: 900;
   font-size: 0.9rem;
 }
-.badge.ok { background: #E6FFF3; color: #0B6B4B; }
-.badge.warn { background: #FFF5D6; color: #7A5600; }
-.badge.bad { background: #FFE7EC; color: #9E1230; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
 
+.badge.ok{
+  background: #E6FFF3 !important;
+  border-color: #29B37C !important;
+  color: #0B6B4B !important;
+}
+
+.badge.warn{
+  background: #FFF5D6 !important;
+  border-color: #D39B00 !important;
+  color: #7A5600 !important;
+}
+
+.badge.bad{
+  background: #FFE7EC !important;
+  border-color: #E64664 !important;
+  color: #9E1230 !important;
+}
 
 # ==============================
 # 📂 Diretórios temporários
