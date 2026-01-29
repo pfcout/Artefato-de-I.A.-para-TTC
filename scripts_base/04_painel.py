@@ -294,11 +294,23 @@ def score_total_25(phase_scores: dict) -> int:
 
 
 def label_qualidade_por_score25(score25: int) -> tuple[str, str]:
-    if score25 <= 8:
-        return "Baixa", "bad"
-    if score25 <= 18:
-        return "Moderada", "warn"
-    return "Alta", "ok"
+    """
+    Classificação geral da execução SPIN (0–25),
+    com rótulo textual e classe visual.
+    """
+    if score25 <= 5:
+        return "Crítica", "bad"
+
+    if score25 <= 10:
+        return "Muito Baixa", "bad"
+
+    if score25 <= 15:
+        return "Baixa a Moderada", "warn"
+
+    if score25 <= 20:
+        return "Boa", "ok"
+
+    return "Excelente", "ok"
 
 
 def msg_geral_por_score25(score25: int) -> str:
