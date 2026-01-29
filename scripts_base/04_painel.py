@@ -307,7 +307,7 @@ def label_qualidade_por_score25(score25: int) -> tuple[str, str]:
     if score25 <= 14:
         return "Moderada", "warn"
 
-    if score25 <= 20:
+    if score25 <= 18:
         return "Boa", "ok"
 
     return "Excelente", "ok"
