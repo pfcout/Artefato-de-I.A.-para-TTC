@@ -1,16 +1,3 @@
-Perfeito. Abaixo está o **README.md FINAL, COMPLETO E DEFINITIVO**, agora com:
-
-* ✅ **Fluxo iniciante (painel apenas)** — recomendado e destacado
-* ✅ **Fluxo completo manual (01 → 02 → 03 → painel)** explicado passo a passo
-* ✅ **Separação clara de VENV por etapa** (sem confusão)
-* ✅ **Ollama tratado como obrigatório (sem “talvez”)**
-* ✅ **Link do Streamlit Cloud posicionado estrategicamente**
-* ✅ Linguagem **acadêmica, formal e didática**, pensada para **quem nunca mexeu com tecnologia**
-
-Você pode **copiar e colar integralmente**.
-
----
-
 # Artefato de Inteligência Artificial para Televendas Técnico-Consultivas (TTC)
 
 Este repositório apresenta um **artefato acadêmico de Inteligência Artificial**, desenvolvido como objeto de estudo do **Mestrado Acadêmico em Administração da Universidade Feevale**, com foco na **Inteligência Comercial aplicada a Televendas Técnico-Consultivas (TTC)**.
