@@ -585,7 +585,7 @@ def processar_wav_unico(wav_file):
     st.markdown("### 📊 Dados (Excel)")
     st.dataframe(df, use_container_width=True)
 
-        arquivo_foco = str(resp.get("arquivo", fname))
+    arquivo_foco = str(resp.get("arquivo", fname))
 
     row = pick_row_by_file(df, arquivo_foco)
     if row is None:
