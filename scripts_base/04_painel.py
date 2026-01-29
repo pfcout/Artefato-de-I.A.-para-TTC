@@ -298,14 +298,14 @@ def label_qualidade_por_score25(score25: int) -> tuple[str, str]:
     Classificação geral da execução SPIN (0–25),
     com rótulo textual e classe visual.
     """
-    if score25 <= 5:
+    if score25 <= 4:
         return "Crítica", "bad"
 
     if score25 <= 10:
-        return "Muito Baixa", "bad"
+        return "Baixa", "bad"
 
-    if score25 <= 15:
-        return "Baixa a Moderada", "warn"
+    if score25 <= 14:
+        return "Moderada", "warn"
 
     if score25 <= 20:
         return "Boa", "ok"
