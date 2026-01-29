@@ -521,7 +521,7 @@ Linha de Pesquisa: Inovação para Competitividade
 * **Autor:** [Paulo Luis Fernandes Coutinho](https://github.com/pfcout)
 * **Orientadora:** Prof.ª Dr.ª Cristiane Froehlich
 * **Coorientadora:** Prof.ª Dr.ª Maria Cristina Bohnenberger
-* **Colaboração Técnica:** Lucas Gabriel Ferreira Gomes (Cientista de Dados)
+* **Colaboração Técnica:** [Lucas Gabriel Ferreira Gomes (Cientista de Dados)](https://github.com/Oreki820)
 
 ### Inspiração Técnica
 
