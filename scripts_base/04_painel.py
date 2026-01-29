@@ -388,7 +388,7 @@ def render_avaliacao_completa(filename: str, row: pd.Series):
     st.markdown(
         f"""
 <div class="card">
-  <h3 style="margin:0;">📄 {filename}</h3>
+  <h3 style="margin:0;">{filename}</h3>
   <p style="margin-top:6px;margin-bottom:10px;">
     <span class="badge {qualidade_tag}">{qualidade_label}</span>
     &nbsp;&nbsp; <b>Pontuação:</b> {score25}/25
