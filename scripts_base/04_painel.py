@@ -304,42 +304,43 @@ def label_qualidade_por_score25(score25: int) -> tuple[str, str]:
 def msg_geral_por_score25(score25: int) -> str:
     if score25 <= 6:
         return (
-    "A pontuação indica uma execução muito fraca do método SPIN. "
-    "A conversa se manteve predominantemente reativa e operacional, "
-    "com ausência de enquadramento claro e pouco ou nenhum diagnóstico estruturado. "
-    "Não há evidências consistentes de exploração de situação, problema, impacto ou valor, "
-    "o que compromete a construção consultiva da conversa e reduz significativamente o potencial de avanço."
-)
+            "A pontuação indica uma execução muito fraca do método SPIN. "
+            "A conversa se manteve predominantemente reativa e operacional, "
+            "com ausência de enquadramento claro e pouco ou nenhum diagnóstico estruturado. "
+            "Não há evidências consistentes de exploração de situação, problema, impacto ou valor, "
+            "o que compromete a construção consultiva da conversa e reduz significativamente o potencial de avanço."
+        )
 
     if score25 <= 12:
         return (
-    "A avaliação revela sinais iniciais de estrutura consultiva, porém com execução instável. "
-    "Algumas etapas do método SPIN aparecem de forma pontual, mas sem profundidade ou encadeamento lógico. "
-    "Há pouca consistência nos follow-ups e baixa consolidação de impacto e valor, "
-    "fazendo com que a conversa perca força analítica e fique vulnerável a desvios operacionais."
-)
+            "A avaliação revela sinais iniciais de estrutura consultiva, porém com execução instável. "
+            "Algumas etapas do método SPIN aparecem de forma pontual, mas sem profundidade ou encadeamento lógico. "
+            "Há pouca consistência nos follow-ups e baixa consolidação de impacto e valor, "
+            "fazendo com que a conversa perca força analítica e fique vulnerável a desvios operacionais."
+        )
 
     if score25 <= 18:
-       return (
-    "A conversa apresenta uma boa base de execução do método SPIN. "
-    "Há direcionamento, perguntas relevantes e início de diagnóstico consultivo. "
-    "Entretanto, ainda existem oportunidades claras de evolução, principalmente na quantificação das dores, "
-    "na exploração mais profunda das implicações e na conexão explícita entre problema, impacto e benefício."
-)
+        return (
+            "A conversa apresenta uma boa base de execução do método SPIN. "
+            "Há direcionamento, perguntas relevantes e início de diagnóstico consultivo. "
+            "Entretanto, ainda existem oportunidades claras de evolução, principalmente na quantificação das dores, "
+            "na exploração mais profunda das implicações e na conexão explícita entre problema, impacto e benefício."
+        )
 
-       return (
-    "A avaliação indica uma execução forte e consistente do método SPIN. "
-    "A conversa demonstra controle de abertura, bom encadeamento de diagnóstico e exploração adequada de impacto. "
-    "Como ajuste final, recomenda-se consolidar melhor os critérios de sucesso, "
-    "formalizar próximos passos e reforçar a conexão entre valor percebido e decisão."
-)
-"
-    return return (
-    "Excelente execução do método SPIN. "
-    "A conversa apresenta enquadramento claro desde a abertura, diagnóstico progressivo e bem estruturado, "
-    "exploração consistente de problemas e implicações, e forte conexão entre impacto e valor. "
-    "O vendedor atua de forma claramente consultiva, conduzindo a interação com lógica, clareza e foco em decisão."
-)
+    if score25 <= 23:
+        return (
+            "A avaliação indica uma execução forte e consistente do método SPIN. "
+            "A conversa demonstra controle de abertura, bom encadeamento de diagnóstico e exploração adequada de impacto. "
+            "Como ajuste final, recomenda-se consolidar melhor os critérios de sucesso, "
+            "formalizar próximos passos e reforçar a conexão entre valor percebido e decisão."
+        )
+
+    return (
+        "Excelente execução do método SPIN. "
+        "A conversa apresenta enquadramento claro desde a abertura, diagnóstico progressivo e bem estruturado, "
+        "exploração consistente de problemas e implicações, e forte conexão entre impacto e valor. "
+        "O vendedor atua de forma claramente consultiva, conduzindo a interação com lógica, clareza e foco em decisão."
+    )
 
 
 def ranking_por_nota(nota: int) -> str:
