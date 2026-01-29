@@ -131,108 +131,374 @@ Projeto Tele_IA Transcricao/
 
 ---
 
-# 🚀 EXECUÇÃO DO PROJETO — GUIA COMPLETO
+# 🚀 Como Rodar o Projeto (Guia Completo — Iniciantes e Avançados)
 
-## 🟢 CAMINHO RECOMENDADO (INICIANTES)
+Esta seção explica **passo a passo**, de forma **extremamente didática**, como executar o projeto **localmente**, desde a opção mais simples (apenas o painel) até o fluxo completo de processamento (**01 → 02 → 03 → Painel**).
+O texto foi escrito assumindo que o leitor **nunca programou**, **nunca usou PowerShell** e **não tem familiaridade com ambientes técnicos**.
 
-### Rodar apenas o Painel
-
-1. Instale o Python 3.11
-2. Baixe o projeto (ZIP ou git clone)
-3. Crie o ambiente virtual do painel:
-
-```powershell
-py -3.11 -m venv .venv_painel
-.\.venv_painel\Scripts\Activate.ps1
-python -m pip install -r .\requirements\requirements_painel.txt
-```
-
-4. Execute o painel:
-
-```powershell
-streamlit run .\scripts_base\04_painel.py
-```
-
-Abra no navegador o que aparecer, exemplo:
-[http://localhost:8501](http://localhost:8501)
+> ⚠️ **Aviso fundamental (leia com atenção):**
+> **Se o Ollama não estiver ativo, o projeto não roda corretamente.**
+> O Ollama é **obrigatório** para:
+>
+> * executar corretamente o **painel local quando há avaliação**,
+> * executar o **02_zeroshot.py**,
+> * executar o **03_avaliacao_zeroshot.py**.
+>
+> O fluxo **local NÃO usa VPS**.
 
 ---
 
-## 🔵 CAMINHO COMPLETO (EXECUÇÃO MANUAL DO PIPELINE)
+## 📌 Antes de começar (obrigatório)
 
-### 1️⃣ Etapa 01 — Transcrição de Áudio
+Antes de rodar o projeto, é necessário **instalar três ferramentas básicas** no computador. Todas são gratuitas.
 
-#### Criar ambiente específico
+### 1️⃣ Python 3.11 (obrigatório)
 
-```powershell
-py -3.11 -m venv .venv_transcricao
-.\.venv_transcricao\Scripts\Activate.ps1
-python -m pip install -r .\requirements\requirements_transcricao.txt
-```
+O Python é a linguagem usada no projeto.
 
-#### Executar transcrição
+* Site oficial para download:
+  [https://www.python.org/downloads/release/python-3110/](https://www.python.org/downloads/release/python-3110/)
 
-```powershell
-python .\scripts_base\01_transcricao.py --input_dir bd_teste_audio --model small --language pt
-```
+Durante a instalação:
 
-📂 Saída gerada em:
+* Marque a opção **“Add Python to PATH”**
+* Clique em **Install**
 
-* `arquivos_transcritos/txt`
-* `arquivos_transcritos/json`
+#### Como confirmar que o Python está instalado
+
+1. Abra o **PowerShell** (veja abaixo como abrir).
+2. Digite:
+
+   ```powershell
+   py -3.11 --version
+   ```
+3. O resultado esperado é algo parecido com:
+
+   ```
+   Python 3.11.x
+   ```
 
 ---
 
-### 2️⃣ Etapa 02 — Análise SPIN via LLM (Zero-Shot)
+### 2️⃣ Git (obrigatório para baixar o projeto)
 
-⚠️ **Ollama deve estar em execução**:
+O Git é usado para **baixar o projeto do GitHub**.
 
-```bash
+* Site oficial:
+  [https://git-scm.com/downloads](https://git-scm.com/downloads)
+
+Instale aceitando as opções padrão.
+
+#### Como confirmar que o Git está instalado
+
+No PowerShell, digite:
+
+```powershell
+git --version
+```
+
+Resultado esperado:
+
+```
+git version x.xx.x
+```
+
+---
+
+### 3️⃣ Ollama (OBRIGATÓRIO)
+
+O Ollama é o motor de **Inteligência Artificial local (LLM)** usado pelo projeto.
+
+* Site oficial:
+  [https://ollama.com/download](https://ollama.com/download)
+
+Após instalar, **o Ollama precisa estar ativo** sempre que você for:
+
+* rodar o painel local,
+* rodar o script 02,
+* rodar o script 03.
+
+#### Como confirmar que o Ollama está instalado
+
+No PowerShell:
+
+```powershell
+ollama --version
+```
+
+#### Como iniciar o Ollama (passo obrigatório)
+
+Abra **uma janela separada do PowerShell** e execute:
+
+```powershell
 ollama serve
 ```
 
-#### Criar ambiente Zero-Shot
-
-```powershell
-py -3.11 -m venv .venv_zeroshot
-.\.venv_zeroshot\Scripts\Activate.ps1
-python -m pip install -r .\requirements\requirements_zero_shot.txt
-```
-
-#### Executar análise SPIN
-
-```powershell
-python .\scripts_base\02_zeroshot.py
-```
-
-📂 Saída:
-
-* `saida_excel/resultados_completos_SPIN.xlsx`
+✅ **Essa janela deve permanecer aberta** enquanto o projeto estiver sendo usado.
+Ela indica que o serviço de IA está ativo.
 
 ---
 
-### 3️⃣ Etapa 03 — Avaliação Estruturada
+## 💻 O que é terminal e PowerShell (explicação simples)
 
-Ainda no ambiente `.venv_zeroshot`:
+* **Terminal / PowerShell** é uma janela onde você digita comandos.
+* No Windows:
 
-```powershell
-python .\scripts_base\03_avaliacao_zeroshot.py
-```
+  1. Clique no botão **Iniciar**
+  2. Digite **PowerShell**
+  3. Clique para abrir
 
-📂 Saída:
-
-* `saida_avaliacao/excel/avaliacao_spin_avancada.xlsx`
+Durante este guia, **todos os comandos devem ser digitados no PowerShell**.
 
 ---
 
-### 4️⃣ Etapa 04 — Visualização no Painel
+## 📥 Baixar o projeto
+
+Você pode baixar o projeto de duas formas.
+
+### Opção 1 — Baixar como ZIP (mais simples para iniciantes)
+
+1. Acesse o repositório no GitHub.
+2. Clique no botão **Code**.
+3. Clique em **Download ZIP**.
+4. Extraia o arquivo ZIP.
+5. Abra a pasta extraída — esta será a pasta do projeto.
+
+---
+
+### Opção 2 — Baixar via Git (recomendado)
+
+No PowerShell, digite:
+
+```powershell
+git clone https://github.com/pfcout/Artefato-de-I.A.-para-TTC.git
+cd Artefato-de-I.A.-para-TTC
+```
+
+📌 O comando `cd` significa **“entrar na pasta”**.
+
+---
+
+## 🧪 O que é venv e por que usamos aqui
+
+Uma **venv (ambiente virtual)** é um ambiente isolado de Python usado para evitar conflitos entre bibliotecas.
+
+Este projeto utiliza **três ambientes separados**, porque cada etapa tem dependências diferentes:
+
+* `.venv_painel` → para o painel (04)
+* `.venv_transcricao` → para transcrição de áudio (01)
+* `.venv_zeroshot` → para análise e avaliação (02 e 03)
+
+---
+
+## 🪟 Regra importante: 1 janela por tarefa
+
+Use sempre:
+
+* **Uma janela do PowerShell** para rodar comandos do projeto
+* **Uma segunda janela do PowerShell** exclusivamente para manter:
+
+  ```powershell
+  ollama serve
+  ```
+
+---
+
+# 🟢 Caminho A — Apenas Painel (iniciante absoluto)
+
+Este é o caminho **recomendado para iniciantes**.
+
+### Passo 1 — Entrar na pasta do projeto
+
+No PowerShell:
+
+```powershell
+cd caminho\da\pasta\Artefato-de-I.A.-para-TTC
+```
+
+---
+
+### Passo 2 — Criar o ambiente do painel
+
+```powershell
+py -3.11 -m venv .venv_painel
+```
+
+---
+
+### Passo 3 — Ativar o ambiente
 
 ```powershell
 .\.venv_painel\Scripts\Activate.ps1
-streamlit run .\scripts_base\04_painel.py
+```
+
+Quando ativado, o terminal mostrará algo como:
+
+```
+(.venv_painel)
 ```
 
 ---
+
+### Passo 4 — Atualizar ferramentas básicas
+
+```powershell
+python -m pip install -U pip setuptools wheel
+```
+
+---
+
+### Passo 5 — Instalar dependências do painel
+
+```powershell
+python -m pip install -r requirements\requirements_painel.txt
+```
+
+---
+
+### Passo 6 — Iniciar o painel
+
+```powershell
+streamlit run scripts_base\04_painel.py
+```
+
+O navegador abrirá automaticamente em:
+
+```
+http://localhost:8501
+```
+
+Para parar o painel:
+
+* Pressione **Ctrl + C** no PowerShell.
+
+---
+
+# 🔵 Caminho B — Pipeline Completo Manual (01 → 02 → 03 → Painel)
+
+## Etapa 01 — Transcrição de áudio
+
+* Crie o ambiente:
+
+  ```powershell
+  py -3.11 -m venv .venv_transcricao
+  ```
+* Ative:
+
+  ```powershell
+  .\.venv_transcricao\Scripts\Activate.ps1
+  ```
+* Instale dependências:
+
+  ```powershell
+  python -m pip install -r requirements\requirements_transcricao.txt
+  ```
+* Coloque arquivos WAV na pasta:
+
+  ```
+  bd_teste_audio/
+  ```
+* Execute:
+
+  ```powershell
+  python scripts_base\01_transcricao.py --input_dir bd_teste_audio --model small --language pt
+  ```
+
+📄 Saída esperada:
+
+```
+arquivos_transcritos/txt/
+arquivos_transcritos/json/
+```
+
+---
+
+## Etapa 02 — Análise SPIN (Ollama obrigatório)
+
+⚠️ **Ollama deve estar ativo (`ollama serve`)**.
+
+* Crie o ambiente:
+
+  ```powershell
+  py -3.11 -m venv .venv_zeroshot
+  ```
+* Ative:
+
+  ```powershell
+  .\.venv_zeroshot\Scripts\Activate.ps1
+  ```
+* Instale dependências:
+
+  ```powershell
+  python -m pip install -r requirements\requirements_zero_shot.txt
+  ```
+* Execute:
+
+  ```powershell
+  python scripts_base\02_zeroshot.py
+  ```
+
+📊 Saída:
+
+```
+saida_excel/resultados_completos_SPIN.xlsx
+```
+
+---
+
+## Etapa 03 — Avaliação estruturada (Ollama obrigatório)
+
+Com o Ollama ainda ativo:
+
+```powershell
+python scripts_base\03_avaliacao_zeroshot.py
+```
+
+📊 Saída:
+
+```
+saida_avaliacao/excel/avaliacao_spin_avancada.xlsx
+```
+
+---
+
+## Etapa 04 — Painel local
+
+Ative o ambiente do painel:
+
+```powershell
+.\.venv_painel\Scripts\Activate.ps1
+```
+
+Execute:
+
+```powershell
+streamlit run scripts_base\04_painel.py
+```
+
+---
+
+# 🟡 Caminho C — Rodar apenas partes específicas
+
+* **Quero só transcrever (01):**
+  Use apenas `.venv_transcricao` e o script 01.
+
+* **Já tenho TXT e quero rodar 02 e 03:**
+  Use `.venv_zeroshot`, mantenha o Ollama ativo e rode 02 → 03.
+
+* **Quero apenas visualizar resultados:**
+  Use apenas `.venv_painel` e o painel. (ollama ativo)
+
+---
+
+## 🌐 Painel Online (Streamlit Cloud)
+
+Para **demonstração rápida**, **auditoria visual** ou acesso sem instalação local:
+
+👉 [https://artefato-de-ia-para-ttc-cqiwcwa9yam3osormngbju.streamlit.app](https://artefato-de-ia-para-ttc-cqiwcwa9yam3osormngbju.streamlit.app)
+
+---
+
 
 ## Segurança e Ética de Dados
 
