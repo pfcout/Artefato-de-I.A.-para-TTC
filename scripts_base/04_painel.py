@@ -100,6 +100,10 @@ h1, h2, h3 {
   border-color: #E64664 !important;
   color: #9E1230 !important;
 }
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 # ==============================
 # 📂 Diretórios temporários
