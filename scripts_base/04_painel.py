@@ -364,52 +364,61 @@ def badge_class_por_nota(nota: int) -> str:
 
 
 def feedback_programado(fase: str, nota: int) -> str:
-    # feedback curto (objetivo)
+    """
+    Feedback didático e profissional por fase do SPIN (inclui Abertura).
+    Nota esperada: 0 a 5.
+    """
     base = {
         "abertura": [
-            "Abertura ausente. Faltou enquadrar motivo, tempo e objetivo.",
-            "Abertura fraca. Apresente-se, confirme se é um bom momento e alinhe agenda.",
-            "Abertura ok, mas falta consistência: objetivo + tempo + próximos passos.",
-            "Boa abertura. Pode elevar confirmando papel do interlocutor e alinhando agenda em 1 frase.",
-            "Abertura forte. Ajuste fino: confirmar decisor/participantes e transição limpa para diagnóstico.",
-            "Abertura excelente: enquadramento completo e controle de agenda.",
+            "Abertura ausente. Não houve enquadramento mínimo (quem liga, por quê, objetivo e tempo). Sem isso, a conversa tende a ficar reativa e pouco previsível.",
+            "Abertura fraca. Houve contato inicial, mas faltou alinhar contexto, confirmar se é um bom momento e estabelecer uma agenda simples (o que será coberto e em quanto tempo).",
+            "Abertura adequada, porém incompleta. Recomenda-se explicitar objetivo em 1 frase, validar disponibilidade do cliente e sinalizar o próximo passo esperado ao final da conversa.",
+            "Boa abertura. Há introdução e início de alinhamento, mas ainda pode elevar confirmando papel do interlocutor (influenciador/decisor) e combinando agenda curta antes do diagnóstico.",
+            "Abertura forte. Enquadramento claro e transição bem feita. Para refinamento: consolidar agenda + tempo, confirmar participantes/decisão e pedir permissão para conduzir 2–3 perguntas-chave.",
+            "Abertura excelente. Enquadramento completo (contexto, objetivo, tempo e agenda), com controle de condução e transição natural para diagnóstico consultivo."
         ],
         "situation": [
-            "Situação ausente. Não foi mapeado o cenário atual.",
-            "Situação superficial. Faltam processo, ferramenta e responsáveis.",
-            "Situação básica. Falta quantificar e perguntar exceções/regras.",
-            "Boa Situação. Para elevar: pedir exemplos e números.",
-            "Situação muito boa. Ajuste: resumir e pedir confirmação do cliente.",
-            "Situação excelente: cenário completo e coerente.",
+            "Situação ausente. Não foi coletado o cenário atual (processo, rotina, ferramentas e responsáveis), o que enfraquece a validade do diagnóstico nas fases seguintes.",
+            "Situação superficial. Há perguntas iniciais, mas faltam elementos básicos (como funciona hoje, quem faz, com que frequência e quais ferramentas/sistemas são usados).",
+            "Situação básica, porém pouco analítica. Para evoluir: incluir quantificação (volume, tempo, frequência), mapear variações/exceções e obter 1 exemplo recente do processo real.",
+            "Boa Situação. O cenário está razoavelmente mapeado. Para elevar: registrar números (tempo, volume, taxa de erro) e fechar com um resumo em 1 frase para confirmação do cliente.",
+            "Situação muito boa. Há clareza de processo e contexto. Ajuste fino: explorar exceções/regras, pontos de controle e validar o impacto operacional do cenário atual.",
+            "Situação excelente. Mapeamento completo e consistente do cenário, com contexto suficiente para sustentar Problema, Implicação e Need-Payoff com precisão."
         ],
         "problem": [
-            "Problema ausente. A dor não ficou clara.",
-            "Problema fraco. Faltam exemplos e frequência.",
-            "Problema citado, mas sem profundidade. Priorize 1–2 dores e valide gravidade.",
-            "Boa etapa de Problema. Para elevar: transformar dor em requisito objetivo.",
-            "Problema forte. Ajuste: confirmar prioridade e critérios do que precisa mudar.",
-            "Problema excelente: dores claras, exemplos e priorização.",
+            "Problema ausente. A conversa não explicitou uma dor concreta. Sem problema definido, a discussão tende a virar apresentação de solução sem base diagnóstica.",
+            "Problema fraco. Uma dor foi sugerida, mas sem evidências. Para fortalecer: pedir exemplos, localizar onde falha/trava e confirmar frequência e gravidade.",
+            "Problema identificado, porém raso. Recomenda-se aprofundar com follow-ups (quando acontece, com que frequência, quem é afetado) e priorizar 1–2 dores principais.",
+            "Boa etapa de Problema. A dor aparece com alguma clareza. Para evoluir: transformar a dor em requisito objetivo (o que precisa mudar) e validar prioridade com o cliente.",
+            "Problema forte. Dor clara e bem explorada. Ajuste fino: estimar custo/tempo perdido associado e definir critérios do “problema resolvido” (como saberemos que melhorou).",
+            "Problema excelente. Dores principais bem definidas, sustentadas por exemplos e priorização clara, criando base sólida para explorar implicações e construir valor."
         ],
         "implication": [
-            "Implicação ausente. Sem impacto não há urgência nem valor.",
-            "Implicação fraca. Falta custo/tempo/risco e quem é afetado.",
-            "Implicação aparece, mas sem quantificar. Ligue a metas do negócio.",
-            "Boa Implicação. Para elevar: escolher o impacto principal e validar com o cliente.",
-            "Implicação forte. Ajuste: resumir impacto em 1 frase e confirmar.",
-            "Implicação excelente: consequências claras e conectadas ao contexto.",
+            "Implicação ausente. Não houve exploração das consequências do problema (custo, tempo, risco, qualidade, experiência). Sem impacto, a urgência e o valor ficam frágeis.",
+            "Implicação fraca. O impacto foi citado de forma genérica. Para evoluir: detalhar consequências reais, quem é afetado e quais riscos/ineficiências surgem no dia a dia.",
+            "Implicação presente, mas pouco consistente. Recomenda-se quantificar (estimativas já ajudam), conectar a metas (prazo, qualidade, receita, compliance) e validar a leitura com o cliente.",
+            "Boa Implicação. Há exploração razoável de impacto. Para elevar: escolher 1–2 impactos mais relevantes e aprofundar com números e exemplos concretos.",
+            "Implicação forte. Consequências bem conectadas ao contexto. Ajuste fino: resumir impacto em 1 frase e obter confirmação explícita (“faz sentido?”) antes de avançar.",
+            "Implicação excelente. Impacto claro, coerente e bem sustentado, aumentando percepção de urgência e preparando o terreno para consolidar valor no Need-Payoff."
         ],
         "need_payoff": [
-            "Need-payoff ausente. Sem valor e critérios de sucesso.",
-            "Benefícios genéricos. Falta conectar dor → resultado desejado.",
-            "Need-payoff ok, mas pouco concreto. Traga métricas e próximo passo.",
-            "Boa etapa. Para elevar: critérios de sucesso + decisão + próximos passos.",
-            "Need-payoff forte. Ajuste: resumo final de valor e compromisso do próximo passo.",
-            "Excelente: valor verbalizado com critérios claros e fechamento consistente.",
+            "Need-payoff ausente. Não houve consolidação de valor (benefícios desejados, critérios de sucesso ou próximos passos). A conversa encerra sem direção de decisão.",
+            "Benefícios genéricos. Há intenção de valor, mas sem ligação direta com a dor/impacto. Para melhorar: transformar benefício em resultado específico e mensurável (mesmo que estimado).",
+            "Need-payoff adequado, porém pouco concreto. Recomenda-se explicitar ganhos (tempo, custo, risco), estabelecer critérios de sucesso e sugerir próximo passo objetivo.",
+            "Boa etapa de Need-payoff. Valor começa a ficar claro. Para elevar: confirmar prioridade do cliente, critérios de decisão e desenhar próximos passos (quem, quando, o que será validado).",
+            "Need-payoff forte. Benefícios bem conectados ao impacto. Ajuste fino: fechar com resumo (dor → impacto → valor) e obter compromisso do próximo passo (reunião, proposta, piloto).",
+            "Need-payoff excelente. Valor consolidado com critérios claros, alinhamento de decisão e próximos passos objetivos, demonstrando condução consultiva madura."
         ],
     }
-    arr = base.get(fase, ["—"] * 6)
-    return arr[max(0, min(5, int(nota)))]
 
+    arr = base.get(fase, ["—"] * 6)
+    try:
+        n = int(nota)
+    except Exception:
+        n = 0
+    n = max(0, min(5, n))
+    return arr[n]
+    
 
 def render_avaliacao_completa(filename: str, row: pd.Series):
     phase_scores = build_phase_scores_from_row(row)
