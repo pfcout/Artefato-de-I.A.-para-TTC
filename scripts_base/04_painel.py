@@ -618,7 +618,7 @@ if st.session_state["view"] == "single":
     tab_txt, tab_wav = st.tabs(["📝 Colar transcrição (TXT)", "🎧 Enviar áudio (WAV)"])
 
     with tab_txt:
-        txt_input = st.text_area("Cole a transcrição aqui", height=260, value="")
+        txt_input = st.text_area("Cole a transcrição aqui", height=260, value="", key="txt_input_single")
         if st.button("✅ Avaliar texto", use_container_width=True):
             ok, msg = validar_transcricao(txt_input)
             if not ok:
@@ -650,7 +650,7 @@ else:
     if modo.startswith("TXT"):
         up_txts = st.file_uploader("Envie até 10 arquivos .txt", type=["txt"], accept_multiple_files=True)
         st.markdown("Ou cole vários blocos separados por uma linha contendo `---`")
-        multi_txt = st.text_area("Cole aqui (separe com ---)", height=220, value="")
+        multi_txt = st.text_area("Cole aqui (separe com ---)", height=220, value="", key="txt_input_batch")
 
         def processar_lote_txt(entradas: List[Tuple[str, str]]):
             if len(entradas) > 10:
