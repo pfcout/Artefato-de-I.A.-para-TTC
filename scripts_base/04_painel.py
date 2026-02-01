@@ -1,6 +1,12 @@
 # ===============================================
 # 🎧 SPIN Analyzer — Painel Acadêmico (TXT + WAV)
 # MODO ÚNICO: VPS OBRIGATÓRIO (Streamlit / Cloud)
+# ✅ Parte 1/2:
+#    - Resultado persiste no download (sem reset)
+#    - Remove exemplo do TXT
+#    - Pontuação em destaque (sem nome do arquivo no topo)
+#    - Tempos (transcrição/avaliação) e comparação com duração do áudio
+#    - Download com nome de arquivo correto
 # ===============================================
 
 import os
@@ -12,16 +18,19 @@ import shutil
 import wave
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Tuple, List
 
 import streamlit as st
 import pandas as pd
 import requests
+
 
 # ==============================
 # ⚙️ Configurações obrigatórias
 # ==============================
 ANALYZE_API_URL = os.getenv("ANALYZE_API_URL", "").strip()
 TRANSCRIBE_API_URL = os.getenv("TRANSCRIBE_API_URL", "").strip()
+API_TIMEOUT_S = int(os.getenv("API_TIMEOUT_S", "7200"))
 
 if not ANALYZE_API_URL:
     st.error("❌ ANALYZE_API_URL não configurado.")
@@ -105,6 +114,7 @@ h1, h2, h3 {
     unsafe_allow_html=True,
 )
 
+
 # ==============================
 # 📂 Diretórios temporários
 # ==============================
@@ -142,7 +152,7 @@ def api_analyze_text(text: str, filename: str) -> dict:
     r = requests.post(
         ANALYZE_API_URL,
         json=payload,
-        timeout=7200,
+        timeout=API_TIMEOUT_S,
     )
     r.raise_for_status()
     return r.json()
@@ -155,7 +165,7 @@ def api_transcribe_wav(wav_bytes: bytes, filename: str) -> dict:
     r = requests.post(
         TRANSCRIBE_API_URL,
         files=files,
-        timeout=7200,
+        timeout=API_TIMEOUT_S,
     )
     r.raise_for_status()
     return r.json()
@@ -164,7 +174,7 @@ def api_transcribe_wav(wav_bytes: bytes, filename: str) -> dict:
 # ==============================
 # ✅ Validação do TXT
 # ==============================
-def validar_transcricao(txt: str) -> tuple[bool, str]:
+def validar_transcricao(txt: str) -> Tuple[bool, str]:
     linhas = [l.strip() for l in txt.splitlines() if l.strip()]
     if len(linhas) < 4:
         return False, "Texto muito curto."
@@ -182,18 +192,36 @@ def duracao_wav_seg(path: Path) -> float:
 
 
 def human_time(sec: float) -> str:
+    try:
+        sec = float(sec)
+    except Exception:
+        sec = 0.0
     if sec < 60:
         return f"{int(sec)}s"
     return f"{int(sec//60)}m {int(sec%60)}s"
 
 
 # ==============================
-# 🧭 Navegação
+# 🧠 Estado: persistir último resultado (evita reset no download)
 # ==============================
 if "view" not in st.session_state:
     st.session_state["view"] = "single"
 
+if "last_result" not in st.session_state:
+    st.session_state["last_result"] = None
 
+
+def set_last_result(**kwargs):
+    st.session_state["last_result"] = kwargs
+
+
+def clear_last_result():
+    st.session_state["last_result"] = None
+
+
+# ==============================
+# 🧭 Navegação
+# ==============================
 with st.sidebar:
     st.markdown("### 🧭 Navegação")
     if st.button("👤 Avaliação Individual"):
@@ -203,6 +231,12 @@ with st.sidebar:
 
     st.markdown("---")
     st.success("Servidor VPS conectado ✅")
+
+    st.markdown("---")
+    if st.session_state.get("last_result"):
+        if st.button("🧹 Limpar resultado atual", use_container_width=True):
+            clear_last_result()
+            st.rerun()
 
 
 # ==============================
@@ -215,6 +249,7 @@ st.markdown(
 )
 st.markdown("---")
 
+
 # ==============================
 # 📦 Helpers: Excel do retorno
 # ==============================
@@ -223,7 +258,6 @@ def decode_excel_base64_to_bytes(excel_b64: str) -> bytes:
 
 
 def excel_bytes_to_df(excel_bytes: bytes) -> pd.DataFrame:
-    # Lê o excel retornado pelo Analyze API direto da memória
     import io
     bio = io.BytesIO(excel_bytes)
     df = pd.read_excel(bio)
@@ -259,7 +293,7 @@ def normalizar_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def pick_row_by_file(df: pd.DataFrame, filename: str) -> pd.Series | None:
+def pick_row_by_file(df: pd.DataFrame, filename: str) -> Optional[pd.Series]:
     if df is None or df.empty:
         return None
     dff = df[df["arquivo"].astype(str) == str(filename)]
@@ -293,23 +327,15 @@ def score_total_25(phase_scores: dict) -> int:
     return sum(int(phase_scores.get(k, 0)) for k in ["abertura", "situation", "problem", "implication", "need_payoff"])
 
 
-def label_qualidade_por_score25(score25: int) -> tuple[str, str]:
-    """
-    Classificação geral da execução SPIN (0–25),
-    com rótulo textual e classe visual.
-    """
+def label_qualidade_por_score25(score25: int) -> Tuple[str, str]:
     if score25 <= 4:
         return "Crítica", "bad"
-
     if score25 <= 10:
         return "Baixa", "bad"
-
     if score25 <= 14:
         return "Moderada", "warn"
-
     if score25 <= 18:
         return "Boa", "ok"
-
     return "Excelente", "ok"
 
 
@@ -319,39 +345,26 @@ def msg_geral_por_score25(score25: int) -> str:
             "A pontuação indica uma execução muito fraca do método SPIN. "
             "A conversa se manteve predominantemente reativa e operacional, "
             "com ausência de enquadramento claro e pouco ou nenhum diagnóstico estruturado. "
-            "Não há evidências consistentes de exploração de situação, problema, impacto ou valor, "
-            "o que compromete a construção consultiva da conversa e reduz significativamente o potencial de avanço."
+            "Não há evidências consistentes de exploração de situação, problema, impacto ou valor."
         )
-
     if score25 <= 12:
         return (
             "A avaliação revela sinais iniciais de estrutura consultiva, porém com execução instável. "
-            "Algumas etapas do método SPIN aparecem de forma pontual, mas sem profundidade ou encadeamento lógico. "
-            "Há pouca consistência nos follow-ups e baixa consolidação de impacto e valor, "
-            "fazendo com que a conversa perca força analítica e fique vulnerável a desvios operacionais."
+            "Algumas etapas do método SPIN aparecem de forma pontual, mas sem profundidade ou encadeamento lógico."
         )
-
     if score25 <= 18:
         return (
             "A conversa apresenta uma boa base de execução do método SPIN. "
-            "Há direcionamento, perguntas relevantes e início de diagnóstico consultivo. "
-            "Entretanto, ainda existem oportunidades claras de evolução, principalmente na quantificação das dores, "
-            "na exploração mais profunda das implicações e na conexão explícita entre problema, impacto e benefício."
+            "Há direcionamento e início de diagnóstico consultivo, com oportunidades claras de evolução."
         )
-
     if score25 <= 23:
         return (
-            "A avaliação indica uma execução forte e consistente do método SPIN. "
-            "A conversa demonstra controle de abertura, bom encadeamento de diagnóstico e exploração adequada de impacto. "
-            "Como ajuste final, recomenda-se consolidar melhor os critérios de sucesso, "
-            "formalizar próximos passos e reforçar a conexão entre valor percebido e decisão."
+            "A avaliação indica uma execução forte e consistente do método SPIN, "
+            "com bom encadeamento de diagnóstico e exploração adequada de impacto."
         )
-
     return (
-        "Excelente execução do método SPIN. "
-        "A conversa apresenta enquadramento claro desde a abertura, diagnóstico progressivo e bem estruturado, "
-        "exploração consistente de problemas e implicações, e forte conexão entre impacto e valor. "
-        "O vendedor atua de forma claramente consultiva, conduzindo a interação com lógica, clareza e foco em decisão."
+        "Excelente execução do método SPIN, com enquadramento claro desde a abertura, "
+        "diagnóstico progressivo e conexão forte entre impacto e valor."
     )
 
 
@@ -376,53 +389,48 @@ def badge_class_por_nota(nota: int) -> str:
 
 
 def feedback_programado(fase: str, nota: int) -> str:
-    """
-    Feedback didático e profissional por fase do SPIN (inclui Abertura).
-    Nota esperada: 0 a 5.
-    """
     base = {
         "abertura": [
-            "Abertura ausente. Não houve enquadramento mínimo (quem liga, por quê, objetivo e tempo). Sem isso, a conversa tende a ficar reativa e pouco previsível.",
-            "Abertura fraca. Houve contato inicial, mas faltou alinhar contexto, confirmar se é um bom momento e estabelecer uma agenda simples (o que será coberto e em quanto tempo).",
-            "Abertura adequada, porém incompleta. Recomenda-se explicitar objetivo em 1 frase, validar disponibilidade do cliente e sinalizar o próximo passo esperado ao final da conversa.",
-            "Boa abertura. Há introdução e início de alinhamento, mas ainda pode elevar confirmando papel do interlocutor (influenciador/decisor) e combinando agenda curta antes do diagnóstico.",
-            "Abertura forte. Enquadramento claro e transição bem feita. Para refinamento: consolidar agenda + tempo, confirmar participantes/decisão e pedir permissão para conduzir 2–3 perguntas-chave.",
-            "Abertura excelente. Enquadramento completo (contexto, objetivo, tempo e agenda), com controle de condução e transição natural para diagnóstico consultivo."
+            "Abertura ausente. Não houve enquadramento mínimo (quem liga, por quê, objetivo e tempo).",
+            "Abertura fraca. Houve contato inicial, mas faltou alinhar contexto e agenda.",
+            "Abertura adequada, porém incompleta. Explicite objetivo e valide disponibilidade.",
+            "Boa abertura. Melhore confirmando papel do interlocutor e combinando agenda curta.",
+            "Abertura forte. Consolide agenda+tempo e peça permissão para conduzir perguntas-chave.",
+            "Abertura excelente. Enquadramento completo com transição natural para diagnóstico."
         ],
         "situation": [
-            "Situação ausente. Não foi coletado o cenário atual (processo, rotina, ferramentas e responsáveis), o que enfraquece a validade do diagnóstico nas fases seguintes.",
-            "Situação superficial. Há perguntas iniciais, mas faltam elementos básicos (como funciona hoje, quem faz, com que frequência e quais ferramentas/sistemas são usados).",
-            "Situação básica, porém pouco analítica. Para evoluir: incluir quantificação (volume, tempo, frequência), mapear variações/exceções e obter 1 exemplo recente do processo real.",
-            "Boa Situação. O cenário está razoavelmente mapeado. Para elevar: registrar números (tempo, volume, taxa de erro) e fechar com um resumo em 1 frase para confirmação do cliente.",
-            "Situação muito boa. Há clareza de processo e contexto. Ajuste fino: explorar exceções/regras, pontos de controle e validar o impacto operacional do cenário atual.",
-            "Situação excelente. Mapeamento completo e consistente do cenário, com contexto suficiente para sustentar Problema, Implicação e Need-Payoff com precisão."
+            "Situação ausente. Não foi coletado o cenário atual.",
+            "Situação superficial. Faltam elementos básicos (processo, ferramentas, frequência).",
+            "Situação básica. Evolua quantificando volume/tempo e pedindo exemplo real.",
+            "Boa Situação. Eleve registrando números e resumindo para confirmação.",
+            "Situação muito boa. Explore exceções e pontos de controle.",
+            "Situação excelente. Contexto completo para sustentar as próximas fases."
         ],
         "problem": [
-            "Problema ausente. A conversa não explicitou uma dor concreta. Sem problema definido, a discussão tende a virar apresentação de solução sem base diagnóstica.",
-            "Problema fraco. Uma dor foi sugerida, mas sem evidências. Para fortalecer: pedir exemplos, localizar onde falha/trava e confirmar frequência e gravidade.",
-            "Problema identificado, porém raso. Recomenda-se aprofundar com follow-ups (quando acontece, com que frequência, quem é afetado) e priorizar 1–2 dores principais.",
-            "Boa etapa de Problema. A dor aparece com alguma clareza. Para evoluir: transformar a dor em requisito objetivo (o que precisa mudar) e validar prioridade com o cliente.",
-            "Problema forte. Dor clara e bem explorada. Ajuste fino: estimar custo/tempo perdido associado e definir critérios do “problema resolvido” (como saberemos que melhorou).",
-            "Problema excelente. Dores principais bem definidas, sustentadas por exemplos e priorização clara, criando base sólida para explorar implicações e construir valor."
+            "Problema ausente. Não explicitou uma dor concreta.",
+            "Problema fraco. Dor sugerida sem evidências. Peça exemplos e frequência.",
+            "Problema identificado, porém raso. Priorize 1–2 dores e aprofunde follow-ups.",
+            "Boa etapa de Problema. Transforme dor em requisito objetivo e valide prioridade.",
+            "Problema forte. Estime custo/tempo e defina critério de “resolvido”.",
+            "Problema excelente. Dores bem definidas e priorizadas com exemplos."
         ],
         "implication": [
-            "Implicação ausente. Não houve exploração das consequências do problema (custo, tempo, risco, qualidade, experiência). Sem impacto, a urgência e o valor ficam frágeis.",
-            "Implicação fraca. O impacto foi citado de forma genérica. Para evoluir: detalhar consequências reais, quem é afetado e quais riscos/ineficiências surgem no dia a dia.",
-            "Implicação presente, mas pouco consistente. Recomenda-se quantificar (estimativas já ajudam), conectar a metas (prazo, qualidade, receita, compliance) e validar a leitura com o cliente.",
-            "Boa Implicação. Há exploração razoável de impacto. Para elevar: escolher 1–2 impactos mais relevantes e aprofundar com números e exemplos concretos.",
-            "Implicação forte. Consequências bem conectadas ao contexto. Ajuste fino: resumir impacto em 1 frase e obter confirmação explícita (“faz sentido?”) antes de avançar.",
-            "Implicação excelente. Impacto claro, coerente e bem sustentado, aumentando percepção de urgência e preparando o terreno para consolidar valor no Need-Payoff."
+            "Implicação ausente. Não explorou consequências (custo/risco/qualidade).",
+            "Implicação fraca. Impacto genérico. Detalhe consequências e quem é afetado.",
+            "Implicação presente. Quantifique e conecte a metas/indicadores.",
+            "Boa Implicação. Aprofunde 1–2 impactos com números e exemplos.",
+            "Implicação forte. Resuma impacto e obtenha confirmação explícita.",
+            "Implicação excelente. Impacto claro, coerente e sustentado."
         ],
         "need_payoff": [
-            "Need-payoff ausente. Não houve consolidação de valor (benefícios desejados, critérios de sucesso ou próximos passos). A conversa encerra sem direção de decisão.",
-            "Benefícios genéricos. Há intenção de valor, mas sem ligação direta com a dor/impacto. Para melhorar: transformar benefício em resultado específico e mensurável (mesmo que estimado).",
-            "Need-payoff adequado, porém pouco concreto. Recomenda-se explicitar ganhos (tempo, custo, risco), estabelecer critérios de sucesso e sugerir próximo passo objetivo.",
-            "Boa etapa de Need-payoff. Valor começa a ficar claro. Para elevar: confirmar prioridade do cliente, critérios de decisão e desenhar próximos passos (quem, quando, o que será validado).",
-            "Need-payoff forte. Benefícios bem conectados ao impacto. Ajuste fino: fechar com resumo (dor → impacto → valor) e obter compromisso do próximo passo (reunião, proposta, piloto).",
-            "Need-payoff excelente. Valor consolidado com critérios claros, alinhamento de decisão e próximos passos objetivos, demonstrando condução consultiva madura."
+            "Need-payoff ausente. Não consolidou valor nem próximos passos.",
+            "Benefícios genéricos. Conecte valor diretamente à dor/impacto.",
+            "Need-payoff adequado. Explicite ganhos e defina critério de sucesso.",
+            "Boa etapa. Confirme prioridade e desenhe próximos passos objetivos.",
+            "Need-payoff forte. Faça resumo dor→impacto→valor e feche compromisso.",
+            "Need-payoff excelente. Valor consolidado, decisão e próximos passos claros."
         ],
     }
-
     arr = base.get(fase, ["—"] * 6)
     try:
         n = int(nota)
@@ -430,20 +438,19 @@ def feedback_programado(fase: str, nota: int) -> str:
         n = 0
     n = max(0, min(5, n))
     return arr[n]
-    
 
-def render_avaliacao_completa(filename: str, row: pd.Series):
+
+def render_avaliacao_completa(row: pd.Series):
     phase_scores = build_phase_scores_from_row(row)
     score25 = score_total_25(phase_scores)
     qualidade_label, qualidade_tag = label_qualidade_por_score25(score25)
     msg_geral = msg_geral_por_score25(score25)
-
     processado_em = str(row.get("processado_em", row.get("avaliado_em", "—")))
 
     st.markdown(
         f"""
 <div class="card">
-  <h3 style="margin:0;">{filename}</h3>
+  <h3 style="margin:0;">Resumo</h3>
   <p style="margin-top:6px;margin-bottom:10px;">
     <span class="badge {qualidade_tag}">{qualidade_label}</span>
     &nbsp;&nbsp; <b>Pontuação:</b> {score25}/25
@@ -485,10 +492,11 @@ def render_avaliacao_completa(filename: str, row: pd.Series):
 
 
 # ==============================
-# 🔁 Execução: TXT (1 item)
+# ✅ Execuções: salvam resultado em session_state (sem sumir no download)
 # ==============================
 def processar_txt_unico(txt: str, fname: str):
     started = time.time()
+
     with st.spinner("Avaliando no servidor (VPS)…"):
         resp = api_analyze_text(txt.strip(), filename=fname)
 
@@ -504,41 +512,36 @@ def processar_txt_unico(txt: str, fname: str):
         return
 
     excel_bytes = decode_excel_base64_to_bytes(excel_b64)
-
-    st.success(f"✅ Avaliação concluída em {human_time(time.time()-started)}")
-    st.download_button(
-        "📥 Baixar Excel (avaliação)",
-        data=excel_bytes,
-        file_name="avaliacao_spin_avancada.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
+    elapsed_eval = time.time() - started
 
     df = normalizar_df(excel_bytes_to_df(excel_bytes))
-    st.markdown("---")
-    st.markdown("### 📊 Dados (Excel)")
-    st.dataframe(df, use_container_width=True)
-
-    # tenta focar no arquivo
     arquivo_foco = str(resp.get("arquivo", fname))
+
     if "arquivo" in df.columns and (df["arquivo"].astype(str) == arquivo_foco).any():
         row = pick_row_by_file(df, arquivo_foco)
     else:
         row = df.iloc[-1] if not df.empty else None
 
-    if row is not None:
-        st.markdown("---")
-        st.markdown("## ✅ Resultado detalhado")
-        render_avaliacao_completa(arquivo_foco, row)
+    set_last_result(
+        kind="txt",
+        filename=arquivo_foco,
+        excel_bytes=excel_bytes,
+        df=df,
+        row=row,
+        t_audio_sec=None,
+        t_transcribe_sec=None,
+        t_eval_sec=elapsed_eval,
+        text_labeled=None,
+        transcribe_json=None,
+        original_wav_name=None,
+    )
+
+    st.success(f"✅ Avaliação concluída em {human_time(elapsed_eval)}")
 
 
-# ==============================
-# 🔁 Execução: WAV (1 item)
-# ==============================
 def processar_wav_unico(wav_file):
     wav_bytes = wav_file.getbuffer().tobytes()
 
-    # salva temporário para medir duração
     tmp_wav = TMP_WAV / f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
     tmp_wav.write_bytes(wav_bytes)
 
@@ -551,9 +554,10 @@ def processar_wav_unico(wav_file):
         st.error(f"❌ Áudio tem {dur/60:.1f} minutos. Limite recomendado: 10 minutos.")
         return
 
-    started = time.time()
+    t0 = time.time()
     with st.spinner("Transcrevendo no servidor (VPS)…"):
         data_t = api_transcribe_wav(wav_bytes, filename=wav_file.name)
+    t_transcribe = time.time() - t0
 
     text_labeled = (data_t.get("text_labeled") or "").strip()
     if not text_labeled:
@@ -562,13 +566,13 @@ def processar_wav_unico(wav_file):
         return
 
     st.success("✅ Transcrição concluída")
-    st.download_button("📥 Baixar TXT (rotulado)", data=text_labeled, file_name="transcricao_rotulada.txt", use_container_width=True)
-    st.download_button("📥 Baixar JSON (transcrição)", data=json.dumps(data_t, ensure_ascii=False, indent=2), file_name="transcricao.json", use_container_width=True)
 
-    # agora avalia
     fname = f"painel_wav_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+
+    t1 = time.time()
     with st.spinner("Avaliando no servidor (VPS)…"):
         resp = api_analyze_text(text_labeled, filename=fname)
+    t_eval = time.time() - t1
 
     if not resp.get("ok"):
         st.error("❌ O servidor não conseguiu avaliar este áudio.")
@@ -582,139 +586,28 @@ def processar_wav_unico(wav_file):
         return
 
     excel_bytes = decode_excel_base64_to_bytes(excel_b64)
-
-    st.success(f"✅ Avaliação concluída em {human_time(time.time()-started)}")
-    st.download_button(
-        "📥 Baixar Excel (avaliação)",
-        data=excel_bytes,
-        file_name="avaliacao_spin_avancada.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-
     df = normalizar_df(excel_bytes_to_df(excel_bytes))
-    st.markdown("---")
-    st.markdown("### 📊 Dados (Excel)")
-    st.dataframe(df, use_container_width=True)
 
     arquivo_foco = str(resp.get("arquivo", fname))
-
     row = pick_row_by_file(df, arquivo_foco)
     if row is None:
         row = df.iloc[-1] if not df.empty else None
 
-    if row is not None:
-        st.markdown("---")
-        st.markdown("## ✅ Resultado detalhado")
-        render_avaliacao_completa(arquivo_foco, row)
+    set_last_result(
+        kind="wav",
+        filename=arquivo_foco,
+        excel_bytes=excel_bytes,
+        df=df,
+        row=row,
+        t_audio_sec=dur,
+        t_transcribe_sec=t_transcribe,
+        t_eval_sec=t_eval,
+        text_labeled=text_labeled,
+        transcribe_json=json.dumps(data_t, ensure_ascii=False, indent=2),
+        original_wav_name=wav_file.name,
+    )
 
-# ==============================
-# 🔁 Execução: Lote TXT (até 10)
-# ==============================
-def processar_lote_txt(entradas: list[tuple[str, str]]):
-    if len(entradas) > 10:
-        st.error("Limite: 10 entradas por lote.")
-        return
-
-    resultados = []
-    started = time.time()
-
-    for idx, (name, txt) in enumerate(entradas, start=1):
-        ok, msg = validar_transcricao(txt)
-        if not ok:
-            st.error(f"❌ {name}: {msg}")
-            return
-
-        with st.spinner(f"Avaliando {idx}/{len(entradas)} no servidor…"):
-            resp = api_analyze_text(txt.strip(), filename=name)
-
-        if not resp.get("ok") or not resp.get("excel_base64"):
-            st.error(f"❌ Falha ao avaliar: {name}")
-            st.json(resp)
-            return
-
-        excel_bytes = decode_excel_base64_to_bytes(resp["excel_base64"])
-        df = normalizar_df(excel_bytes_to_df(excel_bytes))
-
-        # pega última linha (geralmente 1 ligação)
-        row = df.iloc[-1] if not df.empty else None
-        if row is not None:
-            resultados.append(row)
-
-    if not resultados:
-        st.warning("Nenhum resultado retornou linhas válidas.")
-        return
-
-    df_final = pd.DataFrame(resultados)
-    st.success(f"✅ Lote concluído em {human_time(time.time()-started)}")
-
-    st.markdown("---")
-    st.markdown("### 📊 Resultados do Lote")
-    st.dataframe(df_final, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("### 🧾 Avaliação completa por ligação")
-    for _, row in df_final.iterrows():
-        fname = str(row.get("arquivo", "—"))
-        render_avaliacao_completa(fname, row)
-
-
-# ==============================
-# 🔁 Execução: Lote WAV (até 10)
-# ==============================
-def processar_lote_wav(wavs):
-    if len(wavs) > 10:
-        st.error("Limite: 10 WAVs por lote.")
-        return
-
-    resultados = []
-    started = time.time()
-
-    for idx, wavf in enumerate(wavs, start=1):
-        wav_bytes = wavf.getbuffer().tobytes()
-
-        with st.spinner(f"Transcrevendo {idx}/{len(wavs)}…"):
-            data_t = api_transcribe_wav(wav_bytes, filename=wavf.name)
-
-        text_labeled = (data_t.get("text_labeled") or "").strip()
-        if not text_labeled:
-            st.error(f"❌ Transcrição vazia: {wavf.name}")
-            st.json(data_t)
-            return
-
-        fname = f"batchwav_{idx:02d}_{Path(wavf.name).stem}.txt"
-
-        with st.spinner(f"Avaliando {idx}/{len(wavs)}…"):
-            resp = api_analyze_text(text_labeled, filename=fname)
-
-        if not resp.get("ok") or not resp.get("excel_base64"):
-            st.error(f"❌ Falha ao avaliar: {wavf.name}")
-            st.json(resp)
-            return
-
-        excel_bytes = decode_excel_base64_to_bytes(resp["excel_base64"])
-        df = normalizar_df(excel_bytes_to_df(excel_bytes))
-
-        row = df.iloc[-1] if not df.empty else None
-        if row is not None:
-            resultados.append(row)
-
-    if not resultados:
-        st.warning("Nenhum resultado retornou linhas válidas.")
-        return
-
-    df_final = pd.DataFrame(resultados)
-    st.success(f"✅ Lote WAV concluído em {human_time(time.time()-started)}")
-
-    st.markdown("---")
-    st.markdown("### 📊 Resultados do Lote (WAV)")
-    st.dataframe(df_final, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("### 🧾 Avaliação completa por ligação")
-    for _, row in df_final.iterrows():
-        fname = str(row.get("arquivo", "—"))
-        render_avaliacao_completa(fname, row)
+    st.success(f"✅ Avaliação concluída em {human_time(t_transcribe + t_eval)}")
 
 
 # ==============================
@@ -725,20 +618,14 @@ if st.session_state["view"] == "single":
     tab_txt, tab_wav = st.tabs(["📝 Colar transcrição (TXT)", "🎧 Enviar áudio (WAV)"])
 
     with tab_txt:
-        exemplo = (
-            "[VENDEDOR] Olá, bom dia! Aqui é o Carlos, da MedTech Solutions. Tudo bem?\n"
-            "[CLIENTE] Bom dia! Tudo bem.\n"
-            "[VENDEDOR] Hoje, como vocês controlam os materiais e implantes? É planilha, sistema ou um processo fixo?\n"
-            "[CLIENTE] A gente usa planilhas.\n"
-        )
-        txt_input = st.text_area("Cole a transcrição aqui", height=260, value=exemplo)
-
+        txt_input = st.text_area("Cole a transcrição aqui", height=260, value="")
         if st.button("✅ Avaliar texto", use_container_width=True):
             ok, msg = validar_transcricao(txt_input)
             if not ok:
                 st.error(msg)
             else:
                 limpar_temporarios()
+                clear_last_result()
                 fname = f"painel_txt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                 processar_txt_unico(txt_input, fname)
 
@@ -749,10 +636,14 @@ if st.session_state["view"] == "single":
                 st.error("Envie um WAV para continuar.")
             else:
                 limpar_temporarios()
+                clear_last_result()
                 processar_wav_unico(up_wav)
 
 else:
     st.markdown("### 📊 Visão Gerencial (até 10)")
+    st.info("Em lote, o painel mostra os resultados na tela, mas não persiste downloads por item. (vamos refinar isso na Parte 2/2)")
+    # mantemos lote como estava (será refinado depois)
+
     modo = st.selectbox("Tipo de entrada", ["TXT (arquivos .txt ou colar vários)", "WAV (áudios .wav)"], index=0)
     st.markdown("---")
 
@@ -761,14 +652,54 @@ else:
         st.markdown("Ou cole vários blocos separados por uma linha contendo `---`")
         multi_txt = st.text_area("Cole aqui (separe com ---)", height=220, value="")
 
+        def processar_lote_txt(entradas: List[Tuple[str, str]]):
+            if len(entradas) > 10:
+                st.error("Limite: 10 entradas por lote.")
+                return
+
+            resultados = []
+            started = time.time()
+
+            for idx, (name, txt) in enumerate(entradas, start=1):
+                ok, msg = validar_transcricao(txt)
+                if not ok:
+                    st.error(f"❌ {name}: {msg}")
+                    return
+
+                with st.spinner(f"Avaliando {idx}/{len(entradas)} no servidor…"):
+                    resp = api_analyze_text(txt.strip(), filename=name)
+
+                if not resp.get("ok") or not resp.get("excel_base64"):
+                    st.error(f"❌ Falha ao avaliar: {name}")
+                    st.json(resp)
+                    return
+
+                excel_bytes = decode_excel_base64_to_bytes(resp["excel_base64"])
+                df = normalizar_df(excel_bytes_to_df(excel_bytes))
+                row = df.iloc[-1] if not df.empty else None
+                if row is not None:
+                    resultados.append(row)
+
+            if not resultados:
+                st.warning("Nenhum resultado retornou linhas válidas.")
+                return
+
+            df_final = pd.DataFrame(resultados)
+            st.success(f"✅ Lote concluído em {human_time(time.time()-started)}")
+            st.markdown("---")
+            st.markdown("### 📊 Resultados do Lote")
+            st.dataframe(df_final, use_container_width=True)
+            st.markdown("---")
+            st.markdown("### 🧾 Avaliação completa por ligação")
+            for _, row in df_final.iterrows():
+                render_avaliacao_completa(row)
+
         if st.button("✅ Rodar lote (TXT)", use_container_width=True):
             entradas = []
-
             if up_txts:
                 for f in up_txts[:10]:
                     content = f.getvalue().decode("utf-8", errors="ignore")
                     entradas.append((f.name, content))
-
             if multi_txt.strip():
                 blocos = [b.strip() for b in multi_txt.split("\n---\n") if b.strip()]
                 for i, b in enumerate(blocos[:10], start=1):
@@ -783,12 +714,180 @@ else:
     else:
         up_wavs = st.file_uploader("Envie até 10 WAVs", type=["wav"], accept_multiple_files=True)
 
+        def processar_lote_wav(wavs):
+            if len(wavs) > 10:
+                st.error("Limite: 10 WAVs por lote.")
+                return
+
+            resultados = []
+            started = time.time()
+
+            for idx, wavf in enumerate(wavs, start=1):
+                wav_bytes = wavf.getbuffer().tobytes()
+
+                with st.spinner(f"Transcrevendo {idx}/{len(wavs)}…"):
+                    data_t = api_transcribe_wav(wav_bytes, filename=wavf.name)
+
+                text_labeled = (data_t.get("text_labeled") or "").strip()
+                if not text_labeled:
+                    st.error(f"❌ Transcrição vazia: {wavf.name}")
+                    st.json(data_t)
+                    return
+
+                fname = f"batchwav_{idx:02d}_{Path(wavf.name).stem}.txt"
+
+                with st.spinner(f"Avaliando {idx}/{len(wavs)}…"):
+                    resp = api_analyze_text(text_labeled, filename=fname)
+
+                if not resp.get("ok") or not resp.get("excel_base64"):
+                    st.error(f"❌ Falha ao avaliar: {wavf.name}")
+                    st.json(resp)
+                    return
+
+                excel_bytes = decode_excel_base64_to_bytes(resp["excel_base64"])
+                df = normalizar_df(excel_bytes_to_df(excel_bytes))
+                row = df.iloc[-1] if not df.empty else None
+                if row is not None:
+                    resultados.append(row)
+
+            if not resultados:
+                st.warning("Nenhum resultado retornou linhas válidas.")
+                return
+
+            df_final = pd.DataFrame(resultados)
+            st.success(f"✅ Lote WAV concluído em {human_time(time.time()-started)}")
+            st.markdown("---")
+            st.markdown("### 📊 Resultados do Lote (WAV)")
+            st.dataframe(df_final, use_container_width=True)
+            st.markdown("---")
+            st.markdown("### 🧾 Avaliação completa por ligação")
+            for _, row in df_final.iterrows():
+                render_avaliacao_completa(row)
+
         if st.button("✅ Rodar lote (WAV)", use_container_width=True):
             if not up_wavs:
                 st.error("Envie pelo menos 1 WAV.")
             else:
                 limpar_temporarios()
                 processar_lote_wav(up_wavs)
+
+
+# ==============================
+# ✅ Render persistente + Downloads (não somem ao baixar)
+# ==============================
+lr = st.session_state.get("last_result")
+
+if lr and lr.get("row") is not None:
+    st.markdown("---")
+    st.markdown("## ✅ Resultado detalhado")
+
+    row = lr["row"]
+    phase_scores = build_phase_scores_from_row(row)
+    score25 = score_total_25(phase_scores)
+    qualidade_label, qualidade_tag = label_qualidade_por_score25(score25)
+
+    # Pontuação em destaque (sem nome de arquivo)
+    st.markdown(
+        f"""
+<div class="card">
+  <h2 style="margin:0; font-size:2rem;">Pontuação: {score25}/25</h2>
+  <p style="margin-top:6px;margin-bottom:0;">
+    <span class="badge {qualidade_tag}">{qualidade_label}</span>
+  </p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # Tempos e comparação com duração do áudio
+    kind = lr.get("kind")
+    if kind == "wav":
+        dur = float(lr.get("t_audio_sec") or 0)
+        tt = float(lr.get("t_transcribe_sec") or 0)
+        te = float(lr.get("t_eval_sec") or 0)
+        total = tt + te
+
+        ratio_txt = ""
+        if dur > 0:
+            ratio = total / dur
+            if ratio <= 1:
+                ratio_txt = f"<br/><b>Comparação:</b> pipeline ~{ratio:.2f}x do tempo da ligação (mais rápido)"
+            else:
+                ratio_txt = f"<br/><b>Comparação:</b> pipeline ~{ratio:.2f}x do tempo da ligação (mais lento)"
+
+        st.markdown(
+            f"""
+<div class="card">
+  <h3 style="margin:0;">⏱️ Tempos</h3>
+  <p style="margin-top:6px;margin-bottom:0;">
+    <b>Duração do áudio:</b> {human_time(dur)}<br/>
+    <b>Transcrição:</b> {human_time(tt)}<br/>
+    <b>Avaliação:</b> {human_time(te)}<br/>
+    <b>Total pipeline:</b> {human_time(total)}
+    {ratio_txt}
+  </p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    else:
+        te = float(lr.get("t_eval_sec") or 0)
+        st.markdown(
+            f"""
+<div class="card">
+  <h3 style="margin:0;">⏱️ Tempo</h3>
+  <p style="margin-top:6px;margin-bottom:0;">
+    <b>Avaliação:</b> {human_time(te)}
+  </p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    # Downloads com nome correto do arquivo
+    st.markdown("### 📥 Downloads")
+
+    filename = str(lr.get("filename") or f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+    base = Path(filename).stem
+
+    excel_name = f"{base}_avaliacao.xlsx"
+    st.download_button(
+        "📥 Baixar Excel (avaliação)",
+        data=lr["excel_bytes"],
+        file_name=excel_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key=f"dl_excel_{base}",
+    )
+
+    # WAV: também baixar TXT e JSON, sem reset
+    if lr.get("kind") == "wav":
+        if lr.get("text_labeled"):
+            st.download_button(
+                "📥 Baixar TXT (rotulado)",
+                data=lr["text_labeled"],
+                file_name=f"{base}_transcricao_rotulada.txt",
+                use_container_width=True,
+                key=f"dl_txt_{base}",
+            )
+        if lr.get("transcribe_json"):
+            st.download_button(
+                "📥 Baixar JSON (transcrição)",
+                data=lr["transcribe_json"],
+                file_name=f"{base}_transcricao.json",
+                use_container_width=True,
+                key=f"dl_json_{base}",
+            )
+
+    st.markdown("---")
+    st.markdown("### 📊 Dados (Excel)")
+    df = lr.get("df")
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        st.dataframe(df, use_container_width=True)
+
+    st.markdown("---")
+    render_avaliacao_completa(row)
+
 
 st.markdown("---")
 st.markdown(
@@ -797,4 +896,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
-
