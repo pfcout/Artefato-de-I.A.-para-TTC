@@ -39,9 +39,9 @@ st.set_page_config(
 ANALYZE_API_URL = os.getenv("ANALYZE_API_URL", "").strip()
 TRANSCRIBE_API_URL = os.getenv("TRANSCRIBE_API_URL", "").strip()
 
-API_TIMEOUT_S = int(os.getenv("API_TIMEOUT_S", "7200"))
 CONNECT_TIMEOUT_S = int(os.getenv("CONNECT_TIMEOUT_S", "10"))
-READ_TIMEOUT_S = int(os.getenv("READ_TIMEOUT_S", str(API_TIMEOUT_S)))
+READ_TIMEOUT_S = int(os.getenv("API_TIMEOUT_S", "7200"))
+REQ_TIMEOUT = (CONNECT_TIMEOUT_S, READ_TIMEOUT_S)
 
 if not ANALYZE_API_URL:
     st.error("❌ ANALYZE_API_URL não configurado (Secrets/Env).")
