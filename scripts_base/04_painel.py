@@ -3,6 +3,8 @@
 # MODO ÚNICO: VPS OBRIGATÓRIO (Streamlit / Cloud)
 # ✅ Código UNIFICADO (sem duplicações) + keys em widgets
 # ✅ Parte 1/2: BASE + Helpers + Scoring + Render (sem UI principal ainda)
+# ✅ + Tratamento robusto de ConnectTimeout/ReadTimeout
+# ✅ + Preparação para batch com downloads por item (Parte 2)
 # ===============================================
 
 import os
@@ -14,7 +16,7 @@ import shutil
 import wave
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict, Any
 
 import streamlit as st
 import pandas as pd
@@ -22,26 +24,37 @@ import requests
 
 
 # ==============================
-# ⚙️ Configurações obrigatórias
+# ⚙️ set_page_config PRIMEIRO
 # ==============================
-ANALYZE_API_URL = os.getenv("ANALYZE_API_URL", "").strip()
-TRANSCRIBE_API_URL = os.getenv("TRANSCRIBE_API_URL", "").strip()
-API_TIMEOUT_S = int(os.getenv("API_TIMEOUT_S", "7200"))
-
-# ⚠️ Importante: set_page_config deve ser chamado antes de qualquer outro st.*
 st.set_page_config(
     page_title="SPIN Analyzer — Avaliação de Ligações",
     page_icon="🎧",
     layout="wide",
 )
 
+
+# ==============================
+# ⚙️ Configurações (Secrets/Env)
+# ==============================
+ANALYZE_API_URL = os.getenv("ANALYZE_API_URL", "").strip()
+TRANSCRIBE_API_URL = os.getenv("TRANSCRIBE_API_URL", "").strip()
+
+API_TIMEOUT_S = int(os.getenv("API_TIMEOUT_S", "7200"))
+CONNECT_TIMEOUT_S = int(os.getenv("CONNECT_TIMEOUT_S", "10"))
+READ_TIMEOUT_S = int(os.getenv("READ_TIMEOUT_S", str(API_TIMEOUT_S)))
+
 if not ANALYZE_API_URL:
-    st.error("❌ ANALYZE_API_URL não configurado.")
+    st.error("❌ ANALYZE_API_URL não configurado (Secrets/Env).")
     st.stop()
 
 if not TRANSCRIBE_API_URL:
-    st.error("❌ TRANSCRIBE_API_URL não configurado.")
+    st.error("❌ TRANSCRIBE_API_URL não configurado (Secrets/Env).")
     st.stop()
+
+
+def _pretty_url(u: str) -> str:
+    u = (u or "").strip()
+    return u
 
 
 # ==============================
@@ -124,20 +137,89 @@ def limpar_temporarios():
 
 
 # ==============================
-# 🌐 API — VPS
+# 🌐 API — VPS (robusta)
 # ==============================
 def api_analyze_text(text: str, filename: str) -> dict:
     payload = {"text": text, "filename": filename}
-    r = requests.post(ANALYZE_API_URL, json=payload, timeout=API_TIMEOUT_S)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.post(
+            ANALYZE_API_URL,
+            json=payload,
+            timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
+        )
+        r.raise_for_status()
+        return r.json()
+
+    except requests.exceptions.ConnectTimeout:
+        raise RuntimeError(
+            "ConnectTimeout: não consegui CONECTAR na API de avaliação.\n"
+            "Causas comuns: porta fechada (firewall), API rodando em 127.0.0.1, servidor fora do ar.\n"
+            f"ANALYZE_API_URL: {_pretty_url(ANALYZE_API_URL)}"
+        )
+    except requests.exceptions.ReadTimeout:
+        raise RuntimeError(
+            "ReadTimeout: conectei na API, mas ela demorou para responder.\n"
+            "Aumente READ_TIMEOUT_S/API_TIMEOUT_S ou otimize o endpoint."
+        )
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(
+            "ConnectionError: falha de rede ao acessar a API.\n"
+            "Pode ser DNS, porta bloqueada, TLS/HTTPS, ou servidor fora do ar.\n"
+            f"URL: {_pretty_url(ANALYZE_API_URL)}\nDetalhe: {e}"
+        )
+    except requests.exceptions.HTTPError:
+        try:
+            body = r.text[:800]
+            code = r.status_code
+        except Exception:
+            body = "—"
+            code = "—"
+        raise RuntimeError(
+            f"HTTPError: servidor respondeu com erro HTTP.\nStatus: {code}\nBody: {body}"
+        )
+    except Exception as e:
+        raise RuntimeError(f"Erro inesperado ao chamar ANALYZE_API_URL: {e}")
 
 
 def api_transcribe_wav(wav_bytes: bytes, filename: str) -> dict:
     files = {"file": (filename, wav_bytes, "audio/wav")}
-    r = requests.post(TRANSCRIBE_API_URL, files=files, timeout=API_TIMEOUT_S)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.post(
+            TRANSCRIBE_API_URL,
+            files=files,
+            timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
+        )
+        r.raise_for_status()
+        return r.json()
+
+    except requests.exceptions.ConnectTimeout:
+        raise RuntimeError(
+            "ConnectTimeout: não consegui CONECTAR na API de transcrição.\n"
+            "Causas comuns: porta fechada (firewall), API em 127.0.0.1, servidor fora do ar.\n"
+            f"TRANSCRIBE_API_URL: {_pretty_url(TRANSCRIBE_API_URL)}"
+        )
+    except requests.exceptions.ReadTimeout:
+        raise RuntimeError(
+            "ReadTimeout: conectei na API de transcrição, mas ela demorou para responder.\n"
+            "Aumente READ_TIMEOUT_S/API_TIMEOUT_S ou reduza o tamanho do áudio."
+        )
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(
+            "ConnectionError: falha de rede ao acessar a API de transcrição.\n"
+            f"URL: {_pretty_url(TRANSCRIBE_API_URL)}\nDetalhe: {e}"
+        )
+    except requests.exceptions.HTTPError:
+        try:
+            body = r.text[:800]
+            code = r.status_code
+        except Exception:
+            body = "—"
+            code = "—"
+        raise RuntimeError(
+            f"HTTPError: servidor respondeu com erro.\nStatus: {code}\nBody: {body}"
+        )
+    except Exception as e:
+        raise RuntimeError(f"Erro inesperado ao chamar TRANSCRIBE_API_URL: {e}")
 
 
 # ==============================
@@ -171,13 +253,16 @@ def human_time(sec: float) -> str:
 
 
 # ==============================
-# 🧠 Estado do app (único!)
+# 🧠 Estado do app (ÚNICO)
 # ==============================
 if "view" not in st.session_state:
     st.session_state["view"] = "single"  # "single" | "batch"
 
 if "last_result" not in st.session_state:
     st.session_state["last_result"] = None  # dict padronizado
+
+if "batch_results" not in st.session_state:
+    st.session_state["batch_results"] = None  # List[dict] ou None
 
 
 def set_last_result(payload: dict):
@@ -186,6 +271,14 @@ def set_last_result(payload: dict):
 
 def clear_last_result():
     st.session_state["last_result"] = None
+
+
+def set_batch_results(items: List[dict]):
+    st.session_state["batch_results"] = items
+
+
+def clear_batch_results():
+    st.session_state["batch_results"] = None
 
 
 # ==============================
@@ -207,7 +300,6 @@ def normalizar_df(df: pd.DataFrame) -> pd.DataFrame:
     if "arquivo" not in df.columns:
         df["arquivo"] = ""
 
-    # padroniza nomes usados no painel (se vierem diferentes)
     df.rename(
         columns={
             "implicacao_feedback": "implication_feedback",
@@ -216,7 +308,6 @@ def normalizar_df(df: pd.DataFrame) -> pd.DataFrame:
         inplace=True,
     )
 
-    # garante colunas numéricas esperadas
     for col in [
         "abertura_nota_humana",
         "situation_nota_humana",
@@ -251,12 +342,7 @@ EXCEL_MAX_COL_W = int(os.getenv("EXCEL_MAX_COL_W", "80"))
 
 
 def format_excel_bytes(excel_bytes: bytes) -> bytes:
-    """
-    Formata o Excel retornado pela API para NÃO 'cortar' textos:
-    - Ajusta largura de colunas
-    - Aplica wrap_text e alinhamento topo/esquerda em colunas textuais
-    - Congela cabeçalho
-    """
+    """Formata o Excel retornado pela API para NÃO 'cortar' textos."""
     if not excel_bytes:
         return excel_bytes
 
@@ -264,7 +350,7 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
         from openpyxl import load_workbook
         from openpyxl.styles import Alignment
     except Exception:
-        return excel_bytes  # se openpyxl não existir, segue sem formatação
+        return excel_bytes
 
     bio = BytesIO(excel_bytes)
     wb = load_workbook(bio)
@@ -362,9 +448,7 @@ def msg_geral_por_score25(score25: int) -> str:
             "Há direcionamento e início de diagnóstico consultivo, com oportunidades claras de evolução."
         )
     if score25 <= 23:
-        return (
-            "Execução forte e consistente do método SPIN, com bom encadeamento de diagnóstico e exploração adequada de impacto."
-        )
+        return "Execução forte e consistente do método SPIN, com bom encadeamento e exploração adequada de impacto."
     return (
         "Excelente execução do método SPIN, com enquadramento claro desde a abertura, "
         "diagnóstico progressivo e conexão forte entre impacto e valor."
@@ -496,7 +580,7 @@ def render_avaliacao_completa(row: pd.Series):
 
 
 def render_header_score_only(filename: str, row: pd.Series, timings: Optional[dict] = None):
-    """Cabeçalho com pontuação em destaque (sem expor nome do arquivo como título)."""
+    """Cabeçalho com pontuação em destaque."""
     phase_scores = build_phase_scores_from_row(row)
     score25 = score_total_25(phase_scores)
     qualidade_label, qualidade_tag = label_qualidade_por_score25(score25)
@@ -553,19 +637,23 @@ def render_header_score_only(filename: str, row: pd.Series, timings: Optional[di
             unsafe_allow_html=True,
         )
 # ===============================================
-# ✅ PARTE 2/2 — UI + Execuções + Batch + Resultado Persistente
+# ✅ PARTE 2/2 — UI + Execuções + Batch + Downloads por item
 # ===============================================
 
 # ==============================
-# ✅ Execuções: 1 item (TXT/WAV)
+# ✅ Execuções: 1 item (TXT/WAV) com tratamento de erro
 # ==============================
 def processar_txt_unico(txt: str, fname: str):
     started = time.time()
+    try:
+        with st.spinner("Avaliando no servidor (VPS)…"):
+            resp = api_analyze_text(txt.strip(), filename=fname)
+    except RuntimeError as e:
+        st.error("❌ Falha ao chamar a API de avaliação.")
+        st.code(str(e))
+        return
 
-    with st.spinner("Avaliando no servidor (VPS)…"):
-        resp = api_analyze_text(txt.strip(), filename=fname)
-
-    if not resp.get("ok"):
+    if not isinstance(resp, dict) or not resp.get("ok"):
         st.error("❌ O servidor não conseguiu avaliar este texto.")
         st.json(resp)
         return
@@ -578,7 +666,6 @@ def processar_txt_unico(txt: str, fname: str):
 
     excel_bytes_raw = decode_excel_base64_to_bytes(excel_b64)
     excel_bytes = format_excel_bytes(excel_bytes_raw)
-
     elapsed_eval = time.time() - started
 
     df = normalizar_df(excel_bytes_to_df(excel_bytes))
@@ -631,8 +718,14 @@ def processar_wav_unico(wav_file):
 
     # Transcrição
     t0_trans = time.time()
-    with st.spinner("Transcrevendo no servidor (VPS)…"):
-        data_t = api_transcribe_wav(wav_bytes, filename=wav_file.name)
+    try:
+        with st.spinner("Transcrevendo no servidor (VPS)…"):
+            data_t = api_transcribe_wav(wav_bytes, filename=wav_file.name)
+    except RuntimeError as e:
+        st.error("❌ Falha ao chamar a API de transcrição.")
+        st.code(str(e))
+        return
+
     transcribe_sec = time.time() - t0_trans
 
     text_labeled = (data_t.get("text_labeled") or "").strip()
@@ -641,13 +734,17 @@ def processar_wav_unico(wav_file):
         st.json(data_t)
         return
 
-    st.success("✅ Transcrição concluída")
-
     # Avaliação
     fname = f"{Path(wav_file.name).stem}.txt"
     t0_eval = time.time()
-    with st.spinner("Avaliando no servidor (VPS)…"):
-        resp = api_analyze_text(text_labeled, filename=fname)
+    try:
+        with st.spinner("Avaliando no servidor (VPS)…"):
+            resp = api_analyze_text(text_labeled, filename=fname)
+    except RuntimeError as e:
+        st.error("❌ Falha ao chamar a API de avaliação.")
+        st.code(str(e))
+        return
+
     eval_sec = time.time() - t0_eval
 
     if not resp.get("ok"):
@@ -699,14 +796,14 @@ def processar_wav_unico(wav_file):
 
 
 # ==============================
-# 🔁 Execução: Lote (TXT/WAV)
+# 🔁 Batch (até 10) + DOWNLOAD POR ITEM (mesmo padrão do individual)
 # ==============================
 def processar_lote_txt(entradas: List[Tuple[str, str]]):
     if len(entradas) > 10:
         st.error("Limite: 10 entradas por lote.")
         return
 
-    resultados = []
+    itens: List[dict] = []
     started = time.time()
 
     for idx, (name, txt) in enumerate(entradas, start=1):
@@ -715,8 +812,13 @@ def processar_lote_txt(entradas: List[Tuple[str, str]]):
             st.error(f"❌ {name}: {msg}")
             return
 
-        with st.spinner(f"Avaliando {idx}/{len(entradas)} no servidor…"):
-            resp = api_analyze_text(txt.strip(), filename=name)
+        try:
+            with st.spinner(f"Avaliando {idx}/{len(entradas)} no servidor…"):
+                resp = api_analyze_text(txt.strip(), filename=name)
+        except RuntimeError as e:
+            st.error(f"❌ Falha ao avaliar {name}")
+            st.code(str(e))
+            return
 
         if not resp.get("ok") or not resp.get("excel_base64"):
             st.error(f"❌ Falha ao avaliar: {name}")
@@ -732,24 +834,37 @@ def processar_lote_txt(entradas: List[Tuple[str, str]]):
         if row is None:
             row = df.iloc[-1] if not df.empty else None
 
-        if row is not None:
-            resultados.append(row)
+        if row is None:
+            st.error(f"❌ Não consegui localizar linha do resultado: {name}")
+            continue
 
-    if not resultados:
+        itens.append(
+            {
+                "kind": "txt",
+                "filename": arquivo_foco,
+                "excel_bytes": excel_bytes,
+                "df": df,
+                "row": row,
+                "timings": {},
+                "text_labeled": None,
+                "transcribe_json": None,
+                "original_wav_name": None,
+            }
+        )
+
+    if not itens:
         st.warning("Nenhum resultado retornou linhas válidas.")
         return
 
-    df_final = pd.DataFrame(resultados)
+    set_batch_results(itens)
+
+    # tabela resumo (a partir das rows)
+    df_final = pd.DataFrame([it["row"] for it in itens if it.get("row") is not None])
     st.success(f"✅ Lote concluído em {human_time(time.time() - started)}")
 
     st.markdown("---")
-    st.markdown("### 📊 Resultados do Lote")
+    st.markdown("### 📊 Resultados do Lote (TXT)")
     st.dataframe(df_final, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("### 🧾 Avaliação completa por ligação")
-    for _, row in df_final.iterrows():
-        render_avaliacao_completa(row)
 
 
 def processar_lote_wav(wavs):
@@ -757,14 +872,19 @@ def processar_lote_wav(wavs):
         st.error("Limite: 10 WAVs por lote.")
         return
 
-    resultados = []
+    itens: List[dict] = []
     started = time.time()
 
     for idx, wavf in enumerate(wavs, start=1):
         wav_bytes = wavf.getbuffer().tobytes()
 
-        with st.spinner(f"Transcrevendo {idx}/{len(wavs)}…"):
-            data_t = api_transcribe_wav(wav_bytes, filename=wavf.name)
+        try:
+            with st.spinner(f"Transcrevendo {idx}/{len(wavs)}…"):
+                data_t = api_transcribe_wav(wav_bytes, filename=wavf.name)
+        except RuntimeError as e:
+            st.error(f"❌ Falha ao transcrever {wavf.name}")
+            st.code(str(e))
+            return
 
         text_labeled = (data_t.get("text_labeled") or "").strip()
         if not text_labeled:
@@ -774,8 +894,13 @@ def processar_lote_wav(wavs):
 
         fname = f"{Path(wavf.name).stem}.txt"
 
-        with st.spinner(f"Avaliando {idx}/{len(wavs)}…"):
-            resp = api_analyze_text(text_labeled, filename=fname)
+        try:
+            with st.spinner(f"Avaliando {idx}/{len(wavs)}…"):
+                resp = api_analyze_text(text_labeled, filename=fname)
+        except RuntimeError as e:
+            st.error(f"❌ Falha ao avaliar {wavf.name}")
+            st.code(str(e))
+            return
 
         if not resp.get("ok") or not resp.get("excel_base64"):
             st.error(f"❌ Falha ao avaliar: {wavf.name}")
@@ -791,24 +916,36 @@ def processar_lote_wav(wavs):
         if row is None:
             row = df.iloc[-1] if not df.empty else None
 
-        if row is not None:
-            resultados.append(row)
+        if row is None:
+            st.error(f"❌ Não consegui localizar linha do resultado: {wavf.name}")
+            continue
 
-    if not resultados:
+        itens.append(
+            {
+                "kind": "wav",
+                "filename": arquivo_foco,
+                "excel_bytes": excel_bytes,
+                "df": df,
+                "row": row,
+                "timings": {},
+                "text_labeled": text_labeled,
+                "transcribe_json": json.dumps(data_t, ensure_ascii=False, indent=2),
+                "original_wav_name": wavf.name,
+            }
+        )
+
+    if not itens:
         st.warning("Nenhum resultado retornou linhas válidas.")
         return
 
-    df_final = pd.DataFrame(resultados)
-    st.success(f"✅ Lote WAV concluído em {human_time(time.time() - started)}")
+    set_batch_results(itens)
+
+    df_final = pd.DataFrame([it["row"] for it in itens if it.get("row") is not None])
+    st.success(f"✅ Lote concluído em {human_time(time.time() - started)}")
 
     st.markdown("---")
     st.markdown("### 📊 Resultados do Lote (WAV)")
     st.dataframe(df_final, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("### 🧾 Avaliação completa por ligação")
-    for _, row in df_final.iterrows():
-        render_avaliacao_completa(row)
 
 
 # ==============================
@@ -823,7 +960,7 @@ st.markdown("---")
 
 
 # ==============================
-# 🧭 Sidebar (com keys!)
+# 🧭 Sidebar
 # ==============================
 with st.sidebar:
     st.markdown("### 🧭 Navegação")
@@ -838,11 +975,18 @@ with st.sidebar:
 
     st.markdown("---")
     st.success("Servidor VPS conectado ✅")
+    st.caption(f"Analyze: {_pretty_url(ANALYZE_API_URL)}")
+    st.caption(f"Transcribe: {_pretty_url(TRANSCRIBE_API_URL)}")
 
     st.markdown("---")
     if st.session_state.get("last_result") is not None:
-        if st.button("🧹 Limpar resultado atual", use_container_width=True, key="nav_clear_result"):
+        if st.button("🧹 Limpar resultado (individual)", use_container_width=True, key="nav_clear_result"):
             clear_last_result()
+            st.rerun()
+
+    if st.session_state.get("batch_results") is not None:
+        if st.button("🧹 Limpar resultados (lote)", use_container_width=True, key="nav_clear_batch"):
+            clear_batch_results()
             st.rerun()
 
 
@@ -905,7 +1049,7 @@ if st.session_state["view"] == "single":
 
 else:
     st.markdown("### 📊 Visão Gerencial (até 10)")
-    st.info("Em lote, o painel mostra os resultados na tela. (downloads por item podem ser refinados depois)")
+    st.info("Em lote, o painel mostra os resultados na tela e agora também permite downloads por item ✅")
 
     modo = st.selectbox(
         "Tipo de entrada",
@@ -948,6 +1092,7 @@ else:
                 st.error("Envie TXT(s) ou cole pelo menos um bloco.")
             else:
                 limpar_temporarios()
+                clear_batch_results()
                 processar_lote_txt(entradas)
 
     else:
@@ -963,16 +1108,17 @@ else:
                 st.error("Envie pelo menos 1 WAV.")
             else:
                 limpar_temporarios()
+                clear_batch_results()
                 processar_lote_wav(up_wavs)
 
 
 # ==============================
-# ✅ Resultado persistente (single) + downloads (com keys!)
+# ✅ Resultado persistente (individual) + downloads
 # ==============================
 lr = st.session_state.get("last_result")
 if lr and lr.get("row") is not None:
     st.markdown("---")
-    st.markdown("## ✅ Resultado atual")
+    st.markdown("## ✅ Resultado atual (individual)")
 
     filename = str(lr.get("filename") or f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
     base = Path(filename).stem
@@ -986,7 +1132,6 @@ if lr and lr.get("row") is not None:
 
     st.markdown("### 📥 Downloads")
 
-    # Excel
     if excel_bytes:
         st.download_button(
             "📥 Baixar Excel (avaliação)",
@@ -994,10 +1139,9 @@ if lr and lr.get("row") is not None:
             file_name=f"{base}_avaliacao_spin.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key=f"dl_excel_{base}",
+            key=f"dl_excel_single_{base}",
         )
 
-    # Se for WAV: TXT rotulado e JSON transcrição
     if lr.get("kind") == "wav":
         if lr.get("text_labeled"):
             st.download_button(
@@ -1005,7 +1149,7 @@ if lr and lr.get("row") is not None:
                 data=lr["text_labeled"],
                 file_name=f"{base}_transcricao_rotulada.txt",
                 use_container_width=True,
-                key=f"dl_txt_{base}",
+                key=f"dl_txt_single_{base}",
             )
         if lr.get("transcribe_json"):
             st.download_button(
@@ -1013,7 +1157,7 @@ if lr and lr.get("row") is not None:
                 data=lr["transcribe_json"],
                 file_name=f"{base}_transcricao.json",
                 use_container_width=True,
-                key=f"dl_json_{base}",
+                key=f"dl_json_single_{base}",
             )
 
     if isinstance(df, pd.DataFrame) and not df.empty:
@@ -1026,7 +1170,68 @@ if lr and lr.get("row") is not None:
 
 
 # ==============================
-# 🧾 Rodapé (único)
+# ✅ Resultados do LOTE + downloads por item
+# ==============================
+br = st.session_state.get("batch_results")
+if br:
+    st.markdown("---")
+    st.markdown("## ✅ Resultados (lote) — Downloads por item")
+
+    for i, item in enumerate(br, start=1):
+        row = item.get("row")
+        if row is None:
+            continue
+
+        filename = str(item.get("filename") or f"item_{i}.txt")
+        base = Path(filename).stem
+
+        with st.expander(f"📌 {i}. {filename}", expanded=False):
+            # header score
+            render_header_score_only(filename, row, timings=item.get("timings"))
+
+            st.markdown("### 📥 Downloads do item")
+
+            excel_bytes = item.get("excel_bytes")
+            if excel_bytes:
+                st.download_button(
+                    "📥 Baixar Excel (avaliação)",
+                    data=excel_bytes,
+                    file_name=f"{base}_avaliacao_spin.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key=f"dl_batch_excel_{i}_{base}",
+                )
+
+            if item.get("kind") == "wav":
+                if item.get("text_labeled"):
+                    st.download_button(
+                        "📥 Baixar TXT (rotulado)",
+                        data=item["text_labeled"],
+                        file_name=f"{base}_transcricao_rotulada.txt",
+                        use_container_width=True,
+                        key=f"dl_batch_txt_{i}_{base}",
+                    )
+                if item.get("transcribe_json"):
+                    st.download_button(
+                        "📥 Baixar JSON (transcrição)",
+                        data=item["transcribe_json"],
+                        file_name=f"{base}_transcricao.json",
+                        use_container_width=True,
+                        key=f"dl_batch_json_{i}_{base}",
+                    )
+
+            df = item.get("df")
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                with st.expander("📊 Ver tabela completa (DataFrame)", expanded=False):
+                    st.dataframe(df, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 🧾 Detalhamento por fase")
+            render_avaliacao_completa(row)
+
+
+# ==============================
+# 🧾 Rodapé
 # ==============================
 st.markdown("---")
 st.markdown(
