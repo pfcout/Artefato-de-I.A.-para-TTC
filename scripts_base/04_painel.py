@@ -1,10 +1,11 @@
 # ===============================================
 # 🎧 SPIN Analyzer — Painel Acadêmico (TXT + WAV)
 # MODO ÚNICO: VPS OBRIGATÓRIO (Streamlit / Cloud)
-# ✅ Código UNIFICADO (sem duplicações) + keys em widgets
-# ✅ Parte 1/2: BASE + Helpers + Scoring + Render (sem UI principal ainda)
-# ✅ + Tratamento robusto de ConnectTimeout/ReadTimeout
-# ✅ + Preparação para batch com downloads por item (Parte 2)
+# PARTE 1/2 — BASE + Helpers + Scoring + Render + APIs robustas
+# ✅ Sem duplicações
+# ✅ Timeout duplo: CONNECT_TIMEOUT_S + API_TIMEOUT_S
+# ✅ Excel formatado (wrap + largura + freeze)
+# ✅ Pronto para tempos (ligação / transcrição / avaliação / total)
 # ===============================================
 
 import os
@@ -34,13 +35,28 @@ st.set_page_config(
 
 
 # ==============================
-# ⚙️ Configurações (Secrets/Env)
+# 🔐 Configurações (Secrets/Env)
 # ==============================
-ANALYZE_API_URL = os.getenv("ANALYZE_API_URL", "").strip()
-TRANSCRIBE_API_URL = os.getenv("TRANSCRIBE_API_URL", "").strip()
+def _get_cfg(key: str, default: str = "") -> str:
+    """
+    Lê primeiro do env, depois do st.secrets (quando existir).
+    """
+    v = os.getenv(key)
+    if v is not None:
+        return str(v).strip()
+    try:
+        if key in st.secrets:
+            return str(st.secrets[key]).strip()
+    except Exception:
+        pass
+    return str(default).strip()
 
-CONNECT_TIMEOUT_S = int(os.getenv("CONNECT_TIMEOUT_S", "10"))
-READ_TIMEOUT_S = int(os.getenv("API_TIMEOUT_S", "7200"))
+
+ANALYZE_API_URL = _get_cfg("ANALYZE_API_URL", "")
+TRANSCRIBE_API_URL = _get_cfg("TRANSCRIBE_API_URL", "")
+
+CONNECT_TIMEOUT_S = int(_get_cfg("CONNECT_TIMEOUT_S", "10"))
+READ_TIMEOUT_S = int(_get_cfg("API_TIMEOUT_S", "7200"))  # read timeout
 REQ_TIMEOUT = (CONNECT_TIMEOUT_S, READ_TIMEOUT_S)
 
 if not ANALYZE_API_URL:
@@ -53,8 +69,7 @@ if not TRANSCRIBE_API_URL:
 
 
 def _pretty_url(u: str) -> str:
-    u = (u or "").strip()
-    return u
+    return (u or "").strip()
 
 
 # ==============================
@@ -145,7 +160,7 @@ def api_analyze_text(text: str, filename: str) -> dict:
         r = requests.post(
             ANALYZE_API_URL,
             json=payload,
-            timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
+            timeout=REQ_TIMEOUT,
         )
         r.raise_for_status()
         return r.json()
@@ -153,18 +168,18 @@ def api_analyze_text(text: str, filename: str) -> dict:
     except requests.exceptions.ConnectTimeout:
         raise RuntimeError(
             "ConnectTimeout: não consegui CONECTAR na API de avaliação.\n"
-            "Causas comuns: porta fechada (firewall), API rodando em 127.0.0.1, servidor fora do ar.\n"
-            f"ANALYZE_API_URL: {_pretty_url(ANALYZE_API_URL)}"
+            "Causas comuns: porta fechada (firewall), URL sem porta correta, servidor fora do ar.\n"
+            f"ANALYZE_API_URL: {_pretty_url(ANALYZE_API_URL)}\n"
+            f"Timeout(connect/read): {CONNECT_TIMEOUT_S}s / {READ_TIMEOUT_S}s"
         )
     except requests.exceptions.ReadTimeout:
         raise RuntimeError(
-            "ReadTimeout: conectei na API, mas ela demorou para responder.\n"
-            "Aumente READ_TIMEOUT_S/API_TIMEOUT_S ou otimize o endpoint."
+            "ReadTimeout: conectei na API de avaliação, mas ela demorou para responder.\n"
+            "Aumente API_TIMEOUT_S ou otimize o endpoint."
         )
     except requests.exceptions.ConnectionError as e:
         raise RuntimeError(
-            "ConnectionError: falha de rede ao acessar a API.\n"
-            "Pode ser DNS, porta bloqueada, TLS/HTTPS, ou servidor fora do ar.\n"
+            "ConnectionError: falha de rede ao acessar a API de avaliação.\n"
             f"URL: {_pretty_url(ANALYZE_API_URL)}\nDetalhe: {e}"
         )
     except requests.exceptions.HTTPError:
@@ -187,7 +202,7 @@ def api_transcribe_wav(wav_bytes: bytes, filename: str) -> dict:
         r = requests.post(
             TRANSCRIBE_API_URL,
             files=files,
-            timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
+            timeout=REQ_TIMEOUT,
         )
         r.raise_for_status()
         return r.json()
@@ -195,13 +210,14 @@ def api_transcribe_wav(wav_bytes: bytes, filename: str) -> dict:
     except requests.exceptions.ConnectTimeout:
         raise RuntimeError(
             "ConnectTimeout: não consegui CONECTAR na API de transcrição.\n"
-            "Causas comuns: porta fechada (firewall), API em 127.0.0.1, servidor fora do ar.\n"
-            f"TRANSCRIBE_API_URL: {_pretty_url(TRANSCRIBE_API_URL)}"
+            "Causas comuns: porta fechada (firewall), URL sem porta correta, servidor fora do ar.\n"
+            f"TRANSCRIBE_API_URL: {_pretty_url(TRANSCRIBE_API_URL)}\n"
+            f"Timeout(connect/read): {CONNECT_TIMEOUT_S}s / {READ_TIMEOUT_S}s"
         )
     except requests.exceptions.ReadTimeout:
         raise RuntimeError(
             "ReadTimeout: conectei na API de transcrição, mas ela demorou para responder.\n"
-            "Aumente READ_TIMEOUT_S/API_TIMEOUT_S ou reduza o tamanho do áudio."
+            "Aumente API_TIMEOUT_S ou reduza o tamanho do áudio."
         )
     except requests.exceptions.ConnectionError as e:
         raise RuntimeError(
@@ -335,10 +351,10 @@ def pick_row_by_file(df: pd.DataFrame, filename: str) -> Optional[pd.Series]:
 # ==============================
 from io import BytesIO
 
-EXCEL_WRAP_TEXT = os.getenv("EXCEL_WRAP_TEXT", "1").strip() not in ("0", "false", "False", "")
-EXCEL_DEFAULT_COL_W = int(os.getenv("EXCEL_DEFAULT_COL_W", "22"))
-EXCEL_TEXT_COL_W = int(os.getenv("EXCEL_TEXT_COL_W", "55"))
-EXCEL_MAX_COL_W = int(os.getenv("EXCEL_MAX_COL_W", "80"))
+EXCEL_WRAP_TEXT = _get_cfg("EXCEL_WRAP_TEXT", "1").strip() not in ("0", "false", "False", "")
+EXCEL_DEFAULT_COL_W = int(_get_cfg("EXCEL_DEFAULT_COL_W", "22"))
+EXCEL_TEXT_COL_W = int(_get_cfg("EXCEL_TEXT_COL_W", "55"))
+EXCEL_MAX_COL_W = int(_get_cfg("EXCEL_MAX_COL_W", "80"))
 
 
 def format_excel_bytes(excel_bytes: bytes) -> bytes:
@@ -580,7 +596,7 @@ def render_avaliacao_completa(row: pd.Series):
 
 
 def render_header_score_only(filename: str, row: pd.Series, timings: Optional[dict] = None):
-    """Cabeçalho com pontuação em destaque."""
+    """Cabeçalho com pontuação + tempos (se disponíveis)."""
     phase_scores = build_phase_scores_from_row(row)
     score25 = score_total_25(phase_scores)
     qualidade_label, qualidade_tag = label_qualidade_por_score25(score25)
@@ -636,15 +652,49 @@ def render_header_score_only(filename: str, row: pd.Series, timings: Optional[di
 """,
             unsafe_allow_html=True,
         )
-# ===============================================
-# ✅ PARTE 2/2 — UI + Execuções + Batch + Downloads por item
-# ===============================================
 
 # ==============================
-# ✅ Execuções: 1 item (TXT/WAV) com tratamento de erro
+# FIM DA PARTE 1/2
+# (UI + execuções single/batch + downloads por item fica na Parte 2/2)
+# ==============================
+
+# ===============================================
+# ✅ PARTE 2/2 — UI + Execuções + Batch + Downloads por item
+# ✅ Sidebar sem mostrar URLs
+# ✅ Tempos (ligação / transcrição / avaliação / total)
+# ===============================================
+
+
+# ==============================
+# 🧪 Quick health check (sem expor URL)
+# ==============================
+def _health_check() -> dict:
+    """
+    Faz um check rápido nos /docs apenas para saber se está acessível.
+    Não exibe URLs no painel.
+    """
+    out = {"transcribe": False, "analyze": False}
+    try:
+        r1 = requests.get(TRANSCRIBE_API_URL.replace("/transcribe", "/docs"), timeout=(3, 6))
+        out["transcribe"] = r1.status_code == 200
+    except Exception:
+        out["transcribe"] = False
+
+    try:
+        r2 = requests.get(ANALYZE_API_URL.replace("/analyze", "/docs"), timeout=(3, 6))
+        out["analyze"] = r2.status_code == 200
+    except Exception:
+        out["analyze"] = False
+
+    return out
+
+
+# ==============================
+# ✅ Execuções: 1 item (TXT/WAV) com tratamento de erro + tempos
 # ==============================
 def processar_txt_unico(txt: str, fname: str):
-    started = time.time()
+    t0_eval = time.time()
+
     try:
         with st.spinner("Avaliando no servidor (VPS)…"):
             resp = api_analyze_text(txt.strip(), filename=fname)
@@ -652,6 +702,8 @@ def processar_txt_unico(txt: str, fname: str):
         st.error("❌ Falha ao chamar a API de avaliação.")
         st.code(str(e))
         return
+
+    elapsed_eval = time.time() - t0_eval
 
     if not isinstance(resp, dict) or not resp.get("ok"):
         st.error("❌ O servidor não conseguiu avaliar este texto.")
@@ -666,7 +718,6 @@ def processar_txt_unico(txt: str, fname: str):
 
     excel_bytes_raw = decode_excel_base64_to_bytes(excel_b64)
     excel_bytes = format_excel_bytes(excel_bytes_raw)
-    elapsed_eval = time.time() - started
 
     df = normalizar_df(excel_bytes_to_df(excel_bytes))
     arquivo_foco = str(resp.get("arquivo", fname))
@@ -704,6 +755,7 @@ def processar_wav_unico(wav_file):
     t0_total = time.time()
     wav_bytes = wav_file.getbuffer().tobytes()
 
+    # salva temporário para medir duração
     tmp_wav = TMP_WAV / f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
     tmp_wav.write_bytes(wav_bytes)
 
@@ -796,7 +848,7 @@ def processar_wav_unico(wav_file):
 
 
 # ==============================
-# 🔁 Batch (até 10) + DOWNLOAD POR ITEM (mesmo padrão do individual)
+# 🔁 Batch (até 10) + DOWNLOAD POR ITEM
 # ==============================
 def processar_lote_txt(entradas: List[Tuple[str, str]]):
     if len(entradas) > 10:
@@ -812,6 +864,7 @@ def processar_lote_txt(entradas: List[Tuple[str, str]]):
             st.error(f"❌ {name}: {msg}")
             return
 
+        t0_eval = time.time()
         try:
             with st.spinner(f"Avaliando {idx}/{len(entradas)} no servidor…"):
                 resp = api_analyze_text(txt.strip(), filename=name)
@@ -819,6 +872,8 @@ def processar_lote_txt(entradas: List[Tuple[str, str]]):
             st.error(f"❌ Falha ao avaliar {name}")
             st.code(str(e))
             return
+
+        eval_sec = time.time() - t0_eval
 
         if not resp.get("ok") or not resp.get("excel_base64"):
             st.error(f"❌ Falha ao avaliar: {name}")
@@ -845,7 +900,12 @@ def processar_lote_txt(entradas: List[Tuple[str, str]]):
                 "excel_bytes": excel_bytes,
                 "df": df,
                 "row": row,
-                "timings": {},
+                "timings": {
+                    "audio_sec": 0.0,
+                    "transcribe_sec": 0.0,
+                    "eval_sec": float(eval_sec),
+                    "total_sec": float(eval_sec),
+                },
                 "text_labeled": None,
                 "transcribe_json": None,
                 "original_wav_name": None,
@@ -858,7 +918,6 @@ def processar_lote_txt(entradas: List[Tuple[str, str]]):
 
     set_batch_results(itens)
 
-    # tabela resumo (a partir das rows)
     df_final = pd.DataFrame([it["row"] for it in itens if it.get("row") is not None])
     st.success(f"✅ Lote concluído em {human_time(time.time() - started)}")
 
@@ -878,6 +937,16 @@ def processar_lote_wav(wavs):
     for idx, wavf in enumerate(wavs, start=1):
         wav_bytes = wavf.getbuffer().tobytes()
 
+        # mede duração (salva temp)
+        tmp_wav = TMP_WAV / f"batch_{idx}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        tmp_wav.write_bytes(wav_bytes)
+        try:
+            audio_sec = duracao_wav_seg(tmp_wav)
+        except Exception:
+            audio_sec = 0.0
+
+        # Transcrição
+        t0_trans = time.time()
         try:
             with st.spinner(f"Transcrevendo {idx}/{len(wavs)}…"):
                 data_t = api_transcribe_wav(wav_bytes, filename=wavf.name)
@@ -885,6 +954,7 @@ def processar_lote_wav(wavs):
             st.error(f"❌ Falha ao transcrever {wavf.name}")
             st.code(str(e))
             return
+        transcribe_sec = time.time() - t0_trans
 
         text_labeled = (data_t.get("text_labeled") or "").strip()
         if not text_labeled:
@@ -894,6 +964,8 @@ def processar_lote_wav(wavs):
 
         fname = f"{Path(wavf.name).stem}.txt"
 
+        # Avaliação
+        t0_eval = time.time()
         try:
             with st.spinner(f"Avaliando {idx}/{len(wavs)}…"):
                 resp = api_analyze_text(text_labeled, filename=fname)
@@ -901,6 +973,7 @@ def processar_lote_wav(wavs):
             st.error(f"❌ Falha ao avaliar {wavf.name}")
             st.code(str(e))
             return
+        eval_sec = time.time() - t0_eval
 
         if not resp.get("ok") or not resp.get("excel_base64"):
             st.error(f"❌ Falha ao avaliar: {wavf.name}")
@@ -927,7 +1000,12 @@ def processar_lote_wav(wavs):
                 "excel_bytes": excel_bytes,
                 "df": df,
                 "row": row,
-                "timings": {},
+                "timings": {
+                    "audio_sec": float(audio_sec or 0),
+                    "transcribe_sec": float(transcribe_sec or 0),
+                    "eval_sec": float(eval_sec or 0),
+                    "total_sec": float((transcribe_sec + eval_sec) or 0),
+                },
                 "text_labeled": text_labeled,
                 "transcribe_json": json.dumps(data_t, ensure_ascii=False, indent=2),
                 "original_wav_name": wavf.name,
@@ -941,7 +1019,7 @@ def processar_lote_wav(wavs):
     set_batch_results(itens)
 
     df_final = pd.DataFrame([it["row"] for it in itens if it.get("row") is not None])
-    st.success(f"✅ Lote concluído em {human_time(time.time() - started)}")
+    st.success(f"✅ Lote WAV concluído em {human_time(time.time() - started)}")
 
     st.markdown("---")
     st.markdown("### 📊 Resultados do Lote (WAV)")
@@ -960,7 +1038,7 @@ st.markdown("---")
 
 
 # ==============================
-# 🧭 Sidebar
+# 🧭 Sidebar (sem URLs)
 # ==============================
 with st.sidebar:
     st.markdown("### 🧭 Navegação")
@@ -975,8 +1053,16 @@ with st.sidebar:
 
     st.markdown("---")
     st.success("Servidor VPS conectado ✅")
-    st.caption(f"Analyze: {_pretty_url(ANALYZE_API_URL)}")
-    st.caption(f"Transcribe: {_pretty_url(TRANSCRIBE_API_URL)}")
+
+    # status rápido (não mostra url)
+    hc = _health_check()
+    c1, c2 = st.columns(2)
+    with c1:
+        st.caption("Transcrição")
+        st.write("✅ Online" if hc["transcribe"] else "⚠️ Indisponível")
+    with c2:
+        st.caption("Avaliação")
+        st.write("✅ Online" if hc["analyze"] else "⚠️ Indisponível")
 
     st.markdown("---")
     if st.session_state.get("last_result") is not None:
@@ -999,10 +1085,17 @@ if st.session_state["view"] == "single":
 
     # -------- TXT (single)
     with tab_txt:
+        exemplo = (
+            "[VENDEDOR] Olá, bom dia! Aqui é o Carlos, da MedTech Solutions. Tudo bem?\n"
+            "[CLIENTE] Bom dia! Tudo bem.\n"
+            "[VENDEDOR] Hoje, como vocês controlam os materiais e implantes? É planilha, sistema ou um processo fixo?\n"
+            "[CLIENTE] A gente usa planilhas.\n"
+        )
+
         txt_input = st.text_area(
             "Cole a transcrição aqui",
             height=260,
-            value="",
+            value=exemplo,
             key="txt_input_single",
         )
 
@@ -1049,7 +1142,7 @@ if st.session_state["view"] == "single":
 
 else:
     st.markdown("### 📊 Visão Gerencial (até 10)")
-    st.info("Em lote, o painel mostra os resultados na tela e agora também permite downloads por item ✅")
+    st.info("Em lote, o painel mostra os resultados na tela e permite downloads por item ✅")
 
     modo = st.selectbox(
         "Tipo de entrada",
@@ -1186,7 +1279,6 @@ if br:
         base = Path(filename).stem
 
         with st.expander(f"📌 {i}. {filename}", expanded=False):
-            # header score
             render_header_score_only(filename, row, timings=item.get("timings"))
 
             st.markdown("### 📥 Downloads do item")
