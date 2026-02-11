@@ -483,15 +483,6 @@ streamlit run scripts_base\04_painel.py
 
 ---
 
-## 🌐 Painel Online (Streamlit Cloud)
-
-Para **demonstração rápida**, **auditoria visual** ou acesso sem instalação local:
-
-👉 [https://artefato-de-ia-para-ttc-cqiwcwa9yam3osormngbju.streamlit.app](https://artefato-de-ia-para-ttc-cqiwcwa9yam3osormngbju.streamlit.app)
-
----
-
-
 ## Segurança e Ética de Dados
 
 * Áudios não são armazenados permanentemente
