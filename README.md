@@ -13,14 +13,6 @@ O projeto foi concebido para atender simultaneamente a **rigor científico**, **
 
 ---
 
-## 🔎 Acesso Rápido — Painel Online (Streamlit Cloud)
-
-Para **visualização imediata** do artefato **sem necessidade de instalação local**, utilize o painel publicado no Streamlit Cloud:
-
-👉 **[https://artefato-de-ia-para-ttc-cqiwcwa9yam3osormngbju.streamlit.app](https://artefato-de-ia-para-ttc-cqiwcwa9yam3osormngbju.streamlit.app)**
-
----
-
 ## Contexto Acadêmico
 
 Este artefato é resultado do:
