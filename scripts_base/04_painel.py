@@ -1,13 +1,14 @@
 # ===============================================
 # 🎧 SPIN Analyzer — Painel (TXT + WAV)
 # Foco: UX profissional + robustez de sessão (Streamlit Cloud)
-# - Individual: abre o Excel principal + downloads
-# - Gerencial (lote): abre Excel consolidado + downloads (lote + por item + TXT quando houver)
+# - Individual: abre o Excel principal + download do Excel
+# - Gerencial (lote): abre Excel consolidado + downloads (Excel lote + Excel por item)
 # - Progresso elegante (barra + tempo decorrido)
 # - Limites do lote:
-#   • Áudio: até 5 arquivos, até 10 minutos cada
+#   • Áudio: até 5 arquivos • até 10 minutos cada
 #   • Texto: até 8 entradas (arquivos + blocos colados)
-# - Correção crítica: não persiste ZIP/bytes grandes em st.session_state
+# - Correção crítica: NÃO persiste bytes grandes em st.session_state
+# - Sem TXT: remove downloads e qualquer persistência de transcrição
 # ===============================================
 
 import os
@@ -92,18 +93,14 @@ st.markdown(
   --warn:#F79009;
   --shadow: 0 10px 30px rgba(11,18,32,0.08);
 }
-
 html, body, [data-testid="stAppViewContainer"]{
   background: var(--bg) !important;
   color: var(--text) !important;
   font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
 }
-
 h1,h2,h3{ color: var(--text) !important; letter-spacing:-0.2px; }
 hr{ border-color: var(--line) !important; }
-
 .block-container{ padding-top: 1.25rem; padding-bottom: 2.5rem; }
-
 .card{
   background: var(--card) !important;
   border: 1px solid var(--line) !important;
@@ -111,7 +108,6 @@ hr{ border-color: var(--line) !important; }
   padding: 16px 18px;
   box-shadow: var(--shadow);
 }
-
 .card-tight{
   background: var(--card) !important;
   border: 1px solid var(--line) !important;
@@ -119,27 +115,23 @@ hr{ border-color: var(--line) !important; }
   padding: 12px 14px;
   box-shadow: var(--shadow);
 }
-
 .kicker{
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--muted);
   margin: 0 0 6px 0;
 }
-
 .title{
   margin: 0;
   font-size: 1.15rem;
   font-weight: 800;
   color: var(--text);
 }
-
 .muted{
   color: var(--muted);
   font-weight: 600;
   margin: 8px 0 0 0;
 }
-
 .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
 .badge{
   display:inline-flex;
@@ -163,17 +155,9 @@ hr{ border-color: var(--line) !important; }
   background: rgba(11,99,243,0.08);
   color: #0B63F3;
 }
-
 .smallline{ font-size:0.95rem; color: var(--muted); font-weight: 650; }
-
-.stProgress > div > div > div > div{
-  border-radius: 999px !important;
-}
-
-div[data-testid="stAlert"]{
-  border-radius: 14px !important;
-}
-
+.stProgress > div > div > div > div{ border-radius: 999px !important; }
+div[data-testid="stAlert"]{ border-radius: 14px !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -188,19 +172,44 @@ def _ensure_state():
     ss.setdefault("view", "single")            # single | batch
     ss.setdefault("single_mode", "txt")        # txt | wav
     ss.setdefault("batch_mode", "txt")         # txt | wav
+
     ss.setdefault("processing", False)
 
     # IDs pequenos (resultados grandes ficam fora da sessão)
     ss.setdefault("single_result_id", "")
     ss.setdefault("batch_result_id", "")
 
-    # Estimativa (leve)
+    # Estimativas (leves)
     ss.setdefault("ema_txt_sec", None)
     ss.setdefault("ema_wav_sec", None)
     ss.setdefault("ema_batch_item_sec", None)
 
+    # Guard de execução (leve): para detectar “estava rodando mas caiu”
+    ss.setdefault("run_token", "")
+    ss.setdefault("run_started_at", 0.0)
 
 _ensure_state()
+
+
+# ==============================
+# 🧯 Watchdog: se “ficou rodando” mas foi interrompido
+# ==============================
+RUN_STALE_WARN_SEC = 4 * 60  # 4 minutos (ajuste seguro)
+
+def _watchdog_ui():
+    ss = st.session_state
+    if ss.get("processing") and ss.get("run_started_at"):
+        elapsed = time.time() - float(ss["run_started_at"])
+        if elapsed > RUN_STALE_WARN_SEC:
+            ss["processing"] = False
+            ss["run_token"] = ""
+            ss["run_started_at"] = 0.0
+            st.warning(
+                "Parece que a execução foi interrompida antes de concluir (por exemplo, queda de conexão). "
+                "Você pode iniciar novamente."
+            )
+
+_watchdog_ui()
 
 
 # ==============================
@@ -210,18 +219,15 @@ _ensure_state()
 # ==============================
 _STORE: Dict[str, Dict[str, Any]] = {}
 _STORE_ORDER: List[str] = []
-_STORE_MAX = 40  # mantém as últimas ~40 execuções (ajuste seguro)
+_STORE_MAX = 40  # mantém as últimas ~40 execuções
 
 def _store_put(payload: Dict[str, Any]) -> str:
     sid = uuid.uuid4().hex
     _STORE[sid] = payload
     _STORE_ORDER.append(sid)
-
-    # evicção
     while len(_STORE_ORDER) > _STORE_MAX:
         old = _STORE_ORDER.pop(0)
         _STORE.pop(old, None)
-
     return sid
 
 def _store_get(sid: str) -> Optional[Dict[str, Any]]:
@@ -245,6 +251,10 @@ def clear_single():
 def clear_batch():
     _store_del(st.session_state.get("batch_result_id", ""))
     st.session_state["batch_result_id"] = ""
+
+def clear_all():
+    clear_single()
+    clear_batch()
 
 
 # ==============================
@@ -282,7 +292,7 @@ def human_time(sec: float) -> str:
 
 
 # ==============================
-# 📏 Excel: formatação leve (wrap + largura + freeze)
+# 📏 Excel: formatação leve
 # ==============================
 from io import BytesIO
 
@@ -314,13 +324,11 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
     for header, col_idx in headers.items():
         h = str(header).lower()
         is_long = any(m in h for m in long_text_markers)
-
         col_letter = ws.cell(row=1, column=col_idx).column_letter
         ws.column_dimensions[col_letter].width = min(
             EXCEL_TEXT_COL_W if is_long else EXCEL_DEFAULT_COL_W,
             EXCEL_MAX_COL_W,
         )
-
         if EXCEL_WRAP_TEXT:
             for r in range(1, max_rows + 1):
                 cell = ws.cell(row=r, column=col_idx)
@@ -412,17 +420,6 @@ def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
     excels.sort(key=lambda kv: (_score(kv[0]), kv[0]))
     return excels
 
-def pick_txt_rotulado(files_map: Dict[str, bytes]) -> str:
-    # pega 1º txt dentro de /txt/ (quando existir)
-    for k, v in files_map.items():
-        kl = k.lower()
-        if kl.endswith(".txt") and "/txt/" in kl:
-            try:
-                return v.decode("utf-8", errors="ignore")
-            except Exception:
-                return ""
-    return ""
-
 
 # ==============================
 # 🧾 Resumo amigável
@@ -439,7 +436,7 @@ def summarize_excel(df: pd.DataFrame) -> str:
         total = float(dfn.sum().sum())
         if total == 0.0:
             return "A planilha foi gerada, mas as etapas ficaram zeradas neste arquivo. Isso pode acontecer em conversas curtas ou sem evidências claras."
-        return "As etapas aparecem na planilha. Use as colunas de etapas e (se houver) trechos/justificativas para validar a identificação."
+        return "As etapas aparecem na planilha. Use as colunas de etapas e justificativas (quando houver) para validar."
     except Exception:
         return "As colunas de etapas aparecem na planilha. Revise as colunas e justificativas para validar o resultado."
 
@@ -448,7 +445,10 @@ def summarize_excel(df: pd.DataFrame) -> str:
 # ⏳ Progresso elegante (sem caixas gigantes)
 # ==============================
 def run_with_progress(phases: List[str], target_func, estimate_total_sec: Optional[float] = None):
-    st.session_state["processing"] = True
+    ss = st.session_state
+    ss["processing"] = True
+    ss["run_token"] = uuid.uuid4().hex
+    ss["run_started_at"] = time.time()
 
     wrap = st.container()
     with wrap:
@@ -457,7 +457,7 @@ def run_with_progress(phases: List[str], target_func, estimate_total_sec: Option
 <div class="card">
   <div class="kicker">Em andamento</div>
   <div class="title">Processando sua solicitação</div>
-  <div class="muted" id="phase_line">Preparando…</div>
+  <div class="muted">Acompanhe o andamento abaixo.</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -493,7 +493,6 @@ def run_with_progress(phases: List[str], target_func, estimate_total_sec: Option
 
         pbar.progress(max(0.01, float(p)))
 
-        # troca fase suavemente
         if estimate_total_sec and estimate_total_sec > 2:
             frac = min(0.999, elapsed / estimate_total_sec)
         else:
@@ -517,9 +516,11 @@ def run_with_progress(phases: List[str], target_func, estimate_total_sec: Option
     elapsed = time.time() - t0
     pbar.progress(1.0)
     time.sleep(0.05)
-
     wrap.empty()
-    st.session_state["processing"] = False
+
+    ss["processing"] = False
+    ss["run_token"] = ""
+    ss["run_started_at"] = 0.0
 
     if not holder["ok"]:
         raise holder["error"]
@@ -547,13 +548,7 @@ def run_single_txt(txt: str) -> None:
     fname = f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     est = st.session_state.get("ema_txt_sec")
 
-    phases = [
-        "Preparando…",
-        "Enviando…",
-        "Analisando…",
-        "Gerando planilha…",
-        "Finalizando…",
-    ]
+    phases = ["Preparando…", "Enviando…", "Analisando…", "Gerando planilha…", "Finalizando…"]
 
     def _do():
         zip_bytes, run_id = run_remote_file(txt.encode("utf-8", errors="ignore"), fname, "text/plain")
@@ -585,7 +580,6 @@ def run_single_txt(txt: str) -> None:
     main_name, main_xlsx = excels[0]
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
 
-    # DF apenas para exibição (não vai para session_state)
     try:
         df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
     except Exception:
@@ -599,7 +593,6 @@ def run_single_txt(txt: str) -> None:
         "excel_name": main_name,
         "excel_bytes": main_xlsx_fmt,
         "df": df,
-        "txt_rotulado": "",
         "timings": {"audio_sec": 0.0, "total_sec": float(elapsed)},
         "created_at": time.time(),
     }
@@ -612,20 +605,11 @@ def run_single_wav(wav_file) -> None:
     wav_bytes = wav_file.getbuffer().tobytes()
     audio_sec = duracao_wav_seg_bytes(wav_bytes)
 
-    # Individual: sem “bloqueio”, mas orientação amigável
     if audio_sec and audio_sec > 600:
         st.warning("Este áudio parece ter mais de 10 minutos. Pode levar mais tempo para concluir.")
 
     est = st.session_state.get("ema_wav_sec")
-
-    phases = [
-        "Preparando…",
-        "Enviando…",
-        "Transcrevendo…",
-        "Analisando…",
-        "Gerando planilha…",
-        "Finalizando…",
-    ]
+    phases = ["Preparando…", "Enviando…", "Transcrevendo…", "Analisando…", "Gerando planilha…", "Finalizando…"]
 
     def _do():
         zip_bytes, run_id = run_remote_file(wav_bytes, wav_file.name, "audio/wav")
@@ -662,8 +646,6 @@ def run_single_wav(wav_file) -> None:
     except Exception:
         df = pd.DataFrame()
 
-    txt_rot = pick_txt_rotulado(files_map)
-
     payload = {
         "type": "single",
         "kind": "wav",
@@ -672,7 +654,6 @@ def run_single_wav(wav_file) -> None:
         "excel_name": main_name,
         "excel_bytes": main_xlsx_fmt,
         "df": df,
-        "txt_rotulado": txt_rot or "",
         "timings": {"audio_sec": float(audio_sec or 0.0), "total_sec": float(elapsed)},
         "created_at": time.time(),
     }
@@ -706,7 +687,6 @@ def _batch_limits_card(kind: str):
 def run_batch_txt(files: List[Any], pasted_blocks: List[str]) -> None:
     entradas: List[Tuple[str, str]] = []
 
-    # monta lista respeitando total (arquivos + blocos)
     if files:
         for f in files:
             if len(entradas) >= MAX_BATCH_TXT_ENTRIES:
@@ -726,12 +706,10 @@ def run_batch_txt(files: List[Any], pasted_blocks: List[str]) -> None:
         st.warning("Envie arquivos de texto ou cole pelo menos um bloco.")
         return
 
-    # valida quantidade total
     if len(entradas) > MAX_BATCH_TXT_ENTRIES:
         st.warning(f"Para lote em texto, use até {MAX_BATCH_TXT_ENTRIES} entradas no total.")
         return
 
-    # valida conteúdo
     for name, txt in entradas:
         ok, msg = validar_transcricao(txt)
         if not ok:
@@ -740,14 +718,7 @@ def run_batch_txt(files: List[Any], pasted_blocks: List[str]) -> None:
 
     est_item = st.session_state.get("ema_batch_item_sec")
     est_total = (est_item * len(entradas)) if est_item else None
-
-    phases = [
-        "Preparando…",
-        "Enviando itens…",
-        "Analisando lote…",
-        "Consolidando…",
-        "Finalizando…",
-    ]
+    phases = ["Preparando…", "Enviando itens…", "Analisando lote…", "Consolidando…", "Finalizando…"]
 
     def _do():
         itens: List[dict] = []
@@ -758,7 +729,6 @@ def run_batch_txt(files: List[Any], pasted_blocks: List[str]) -> None:
             files_map = zip_extract_all(zip_bytes)
             excels = pick_excels(files_map)
 
-            # individual do item
             chosen = None
             for nm, xb in excels:
                 if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
@@ -780,11 +750,9 @@ def run_batch_txt(files: List[Any], pasted_blocks: List[str]) -> None:
                     "run_id": run_id,
                     "excel_individual_name": indiv_name,
                     "excel_individual_bytes": indiv_xlsx_fmt,
-                    "txt_rotulado": "",
                 }
             )
 
-            # lote consolidado
             for nm, xb in excels:
                 if "spin_resultados_lote" in nm.lower():
                     lote_excel_payload = (nm, format_excel_bytes(xb))
@@ -816,11 +784,7 @@ def run_batch_txt(files: List[Any], pasted_blocks: List[str]) -> None:
         "kind": "txt",
         "count": len(entradas),
         "created_at": time.time(),
-        "lote": {
-            "excel_name": lote_name,
-            "excel_bytes": lote_bytes,
-            "df": lote_df,
-        },
+        "lote": {"excel_name": lote_name, "excel_bytes": lote_bytes, "df": lote_df},
         "items": itens,
         "timings": {"total_sec": float(elapsed)},
     }
@@ -838,7 +802,6 @@ def run_batch_wav(wavs: List[Any]) -> None:
         st.warning(f"Para lote em áudio, envie até {MAX_BATCH_WAV_FILES} arquivos.")
         return
 
-    # valida duração antes de iniciar (10 min por áudio)
     for wf in wavs:
         try:
             sec = duracao_wav_seg_bytes(wf.getbuffer().tobytes())
@@ -850,14 +813,7 @@ def run_batch_wav(wavs: List[Any]) -> None:
 
     est_item = st.session_state.get("ema_batch_item_sec")
     est_total = (est_item * len(wavs)) if est_item else None
-
-    phases = [
-        "Preparando…",
-        "Enviando itens…",
-        "Transcrevendo e analisando…",
-        "Consolidando…",
-        "Finalizando…",
-    ]
+    phases = ["Preparando…", "Enviando itens…", "Analisando…", "Consolidando…", "Finalizando…"]
 
     def _do():
         itens: List[dict] = []
@@ -882,8 +838,6 @@ def run_batch_wav(wavs: List[Any]) -> None:
                 indiv_name, indiv_xlsx = chosen
                 indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
 
-            txt_rot = pick_txt_rotulado(files_map)
-
             itens.append(
                 {
                     "idx": idx,
@@ -892,7 +846,6 @@ def run_batch_wav(wavs: List[Any]) -> None:
                     "run_id": run_id,
                     "excel_individual_name": indiv_name,
                     "excel_individual_bytes": indiv_xlsx_fmt,
-                    "txt_rotulado": txt_rot or "",
                 }
             )
 
@@ -927,11 +880,7 @@ def run_batch_wav(wavs: List[Any]) -> None:
         "kind": "wav",
         "count": len(wavs),
         "created_at": time.time(),
-        "lote": {
-            "excel_name": lote_name,
-            "excel_bytes": lote_bytes,
-            "df": lote_df,
-        },
+        "lote": {"excel_name": lote_name, "excel_bytes": lote_bytes, "df": lote_df},
         "items": itens,
         "timings": {"total_sec": float(elapsed)},
     }
@@ -986,8 +935,7 @@ with st.sidebar:
     st.markdown("---")
 
     if st.button("🧹 Limpar resultados", use_container_width=True, disabled=nav_disabled):
-        clear_single()
-        clear_batch()
+        clear_all()
         st.rerun()
 
 
@@ -1128,7 +1076,6 @@ else:
                     blocks = [b.strip() for b in multi_txt.split("\n---\n") if b.strip()]
                 clear_batch()
                 run_batch_txt(up_txts or [], blocks)
-
         with c2:
             if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
                 clear_batch()
@@ -1155,7 +1102,7 @@ else:
 
 
 # ==============================
-# ✅ RESULTADO: Individual
+# ✅ RESULTADO: Individual (somente Excel)
 # ==============================
 single_payload = _store_get(st.session_state.get("single_result_id", ""))
 if single_payload and single_payload.get("type") == "single":
@@ -1175,10 +1122,7 @@ if single_payload and single_payload.get("type") == "single":
     src = single_payload.get("source_name", "")
 
     badges = []
-    if kind == "wav":
-        badges.append("<span class='badge badge-ok'>🎧 Áudio</span>")
-    else:
-        badges.append("<span class='badge badge-ok'>📝 Texto</span>")
+    badges.append("<span class='badge badge-ok'>🎧 Áudio</span>" if kind == "wav" else "<span class='badge badge-ok'>📝 Texto</span>")
     if run_id:
         badges.append(f"<span class='badge badge-brand'>Protocolo: {run_id}</span>")
     if src:
@@ -1221,7 +1165,6 @@ if single_payload and single_payload.get("type") == "single":
         unsafe_allow_html=True,
     )
 
-    # downloads
     base = Path(single_payload.get("source_name") or "avaliacao").stem
     excel_bytes = single_payload.get("excel_bytes", b"")
 
@@ -1235,20 +1178,9 @@ if single_payload and single_payload.get("type") == "single":
         key=f"dl_single_excel_{base}_{single_payload.get('created_at',0)}",
     )
 
-    if single_payload.get("kind") == "wav":
-        txt_rot = (single_payload.get("txt_rotulado") or "").strip()
-        if txt_rot:
-            st.download_button(
-                "📥 Baixar transcrição (TXT)",
-                data=txt_rot,
-                file_name=f"{base}_transcricao.txt",
-                use_container_width=True,
-                key=f"dl_single_txt_{base}_{single_payload.get('created_at',0)}",
-            )
-
 
 # ==============================
-# ✅ RESULTADO: Lote
+# ✅ RESULTADO: Lote (somente Excel)
 # ==============================
 batch_payload = _store_get(st.session_state.get("batch_result_id", ""))
 if batch_payload and batch_payload.get("type") == "batch":
@@ -1287,7 +1219,7 @@ if batch_payload and batch_payload.get("type") == "batch":
 
     items = batch_payload.get("items", []) or []
     st.markdown("")
-    st.markdown("<div class='card-tight'><div class='title'>📁 Itens</div><p class='muted'>Expanda para baixar a planilha individual (e a transcrição quando houver).</p></div>", unsafe_allow_html=True)
+    st.markdown("<div class='card-tight'><div class='title'>📁 Itens</div><p class='muted'>Expanda para baixar a planilha individual.</p></div>", unsafe_allow_html=True)
 
     for item in items:
         idx = item.get("idx", 0)
@@ -1307,17 +1239,6 @@ if batch_payload and batch_payload.get("type") == "batch":
                 )
             else:
                 st.info("Planilha individual não disponível para este item.")
-
-            if item.get("kind") == "wav":
-                txt_rot = (item.get("txt_rotulado") or "").strip()
-                if txt_rot:
-                    st.download_button(
-                        "📥 Baixar transcrição (TXT)",
-                        data=txt_rot,
-                        file_name=f"{base}_transcricao.txt",
-                        use_container_width=True,
-                        key=f"dl_item_txt_{idx}_{base}_{batch_payload.get('created_at',0)}",
-                    )
 
 
 # ==============================
