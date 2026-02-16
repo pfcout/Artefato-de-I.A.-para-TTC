@@ -7,16 +7,16 @@
 # ✅ Limpa resultado ao trocar de aba/tela + botão “Limpar”
 # ✅ Barra de progresso + tempo decorrido (estimativa só quando der)
 # ✅ Excel formatado (wrap + largura + freeze)
+# ✅ Corrige: UI “travada” sem progresso (thread), tabs bug (radio), health 503 no meio (cache + pausa)
 # ===============================================
 
 import os
 import re
 import io
 import time
-import json
 import zipfile
-import shutil
 import wave
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -79,81 +79,67 @@ def _pretty_url(u: str) -> str:
 
 
 # ==============================
-# 🎨 Estilo profissional (mantido)
+# 🎨 Estilo profissional
 # ==============================
 st.markdown(
     """
 <style>
-body {
-  background-color: #FFFFFF;
-  color: #0B1220;
-  font-family: Segoe UI, Arial, sans-serif;
-}
-h1, h2, h3 { color: #0B63F3; }
+body { background-color:#FFFFFF; color:#0B1220; font-family:Segoe UI, Arial, sans-serif; }
+h1,h2,h3 { color:#0B63F3; }
 
 .card{
-  background: #FFFFFF !important;
-  color: #0B1220 !important;
-  border: 1px solid #C7D6F5 !important;
-  border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 14px;
-  box-shadow: 0 8px 24px rgba(11,18,32,0.08);
+  background:#FFFFFF !important;
+  color:#0B1220 !important;
+  border:1px solid #C7D6F5 !important;
+  border-radius:18px;
+  padding:16px 18px;
+  margin-bottom:12px;
+  box-shadow:0 8px 24px rgba(11,18,32,0.08);
 }
-.card *{ color: #0B1220 !important; }
+.card *{ color:#0B1220 !important; }
 
 .badge{
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #AFC7F3 !important;
-  background: #F6F9FF !important;
-  color: #0B63F3 !important;
-  font-weight: 900;
-  font-size: 0.9rem;
+  display:inline-block;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid #AFC7F3 !important;
+  background:#F6F9FF !important;
+  color:#0B63F3 !important;
+  font-weight:800;
+  font-size:0.9rem;
 }
 .badge.ok{
-  background: #E6FFF3 !important;
-  border-color: #29B37C !important;
-  color: #0B6B4B !important;
-}
-.badge.warn{
-  background: #FFF5D6 !important;
-  border-color: #D39B00 !important;
-  color: #7A5600 !important;
-}
-.badge.bad{
-  background: #FFE7EC !important;
-  border-color: #E64664 !important;
-  color: #9E1230 !important;
+  background:#E6FFF3 !important;
+  border-color:#29B37C !important;
+  color:#0B6B4B !important;
 }
 .smallmuted{ color:#3A4A63; font-weight:600; }
+hr { margin: 1.25rem 0; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-
 # ==============================
 # 🧠 Estado do app
 # ==============================
 def _ensure_state():
-    if "view" not in st.session_state:
-        st.session_state["view"] = "single"  # single | batch
-    if "single_tab" not in st.session_state:
-        st.session_state["single_tab"] = "txt"  # txt | wav
-    if "batch_tab" not in st.session_state:
-        st.session_state["batch_tab"] = "txt"  # txt | wav
+    ss = st.session_state
+    ss.setdefault("view", "single")                # single | batch
+    ss.setdefault("single_mode", "txt")            # txt | wav
+    ss.setdefault("batch_mode", "txt")             # txt | wav
 
-    if "last_result" not in st.session_state:
-        st.session_state["last_result"] = None
-    if "batch_results" not in st.session_state:
-        st.session_state["batch_results"] = None
-    if "batch_lote" not in st.session_state:
-        st.session_state["batch_lote"] = None  # dict com excel do lote aberto
+    ss.setdefault("last_result", None)             # dict
+    ss.setdefault("batch_results", None)           # list[dict]
+    ss.setdefault("batch_lote", None)              # dict
 
-    if "last_run_id" not in st.session_state:
-        st.session_state["last_run_id"] = ""
+    ss.setdefault("processing", False)
+    ss.setdefault("last_run_id", "")
+
+    # histórico simples p/ estimativa (EMA)
+    ss.setdefault("ema_txt_sec", None)
+    ss.setdefault("ema_wav_sec", None)
+    ss.setdefault("ema_batch_item_sec", None)
 
 
 _ensure_state()
@@ -206,6 +192,7 @@ def human_time(sec: float) -> str:
         sec = float(sec)
     except Exception:
         sec = 0.0
+    sec = max(0.0, sec)
     if sec < 60:
         return f"{int(sec)}s"
     return f"{int(sec // 60)}m {int(sec % 60)}s"
@@ -232,7 +219,6 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
     ws.freeze_panes = "A2"
 
     long_text_markers = ("_texto", "_feedback", "justific", "trecho", "observ", "coment", "resumo", "explic")
-
     headers = {}
     for col_idx in range(1, ws.max_column + 1):
         v = ws.cell(row=1, column=col_idx).value
@@ -283,74 +269,47 @@ def _safe_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ==============================
-# 🌐 API — VPS (05_api_vps.py)
+# 🌐 VPS Health (cache + pausa durante processamento)
 # ==============================
-def vps_health() -> bool:
+@st.cache_data(ttl=5)
+def _vps_health_cached(url: str) -> Tuple[bool, Dict[str, Any]]:
     try:
-        r = requests.get(f"{VPS_BASE_URL}/health", timeout=(3, 6))
-        return r.status_code == 200
+        r = requests.get(f"{url}/health", timeout=(3, 6))
+        if r.status_code != 200:
+            return False, {}
+        try:
+            return True, r.json()
+        except Exception:
+            return True, {}
     except Exception:
-        return False
+        return False, {}
 
 
-def vps_run_file(file_bytes: bytes, filename: str, mime: str, status_cb=None) -> Tuple[bytes, Dict[str, str], float]:
-    """
-    Chama /run e devolve (zip_bytes, headers úteis, elapsed_sec).
-    """
+def vps_health_ui() -> Tuple[bool, Dict[str, Any]]:
+    if st.session_state.get("processing"):
+        # não “derruba” o usuário com indisponível enquanto processa
+        return True, {}
+    return _vps_health_cached(VPS_BASE_URL)
+
+
+# ==============================
+# 🌐 API — VPS
+# ==============================
+def vps_run_file(file_bytes: bytes, filename: str, mime: str) -> Tuple[bytes, Dict[str, str]]:
     files = {"file": (filename, file_bytes, mime)}
     headers = {"X-API-KEY": VPS_API_KEY}
-
-    t0 = time.time()
-    try:
-        if status_cb:
-            status_cb("Enviando arquivo…", 0.10, None)
-
-        r = requests.post(
-            f"{VPS_BASE_URL}/run",
-            files=files,
-            headers=headers,
-            timeout=REQ_TIMEOUT,
-        )
-
-        if status_cb:
-            # a request só retorna ao final; aqui é “pós-retorno”
-            status_cb("Finalizando e preparando resultado…", 0.95, None)
-
-        r.raise_for_status()
-        zip_bytes = r.content
-        useful = {
-            "X-Run-Id": r.headers.get("X-Run-Id", ""),
-            "X-Debug": r.headers.get("X-Debug", ""),
-        }
-        return zip_bytes, useful, (time.time() - t0)
-
-    except requests.exceptions.ConnectTimeout:
-        raise RuntimeError(
-            "Não consegui CONECTAR na VPS.\n"
-            "Possíveis causas: porta fechada, URL incorreta, servidor fora do ar.\n"
-            f"Servidor: {_pretty_url(VPS_BASE_URL)}\n"
-            f"Timeout(connect/read): {CONNECT_TIMEOUT_S}s / {READ_TIMEOUT_S}s"
-        )
-    except requests.exceptions.ReadTimeout:
-        raise RuntimeError(
-            "Conectei na VPS, mas ela demorou para responder.\n"
-            "Tente um áudio menor ou aumente API_TIMEOUT_S."
-        )
-    except requests.exceptions.ConnectionError as e:
-        raise RuntimeError(
-            "Falha de rede ao acessar a VPS.\n"
-            f"Servidor: {_pretty_url(VPS_BASE_URL)}\nDetalhe: {e}"
-        )
-    except requests.exceptions.HTTPError:
-        try:
-            body = r.text[:800]
-            code = r.status_code
-        except Exception:
-            body = "—"
-            code = "—"
-        raise RuntimeError(f"Servidor respondeu com erro.\nStatus: {code}\nBody: {body}")
-    except Exception as e:
-        raise RuntimeError(f"Erro inesperado ao chamar a VPS: {e}")
+    r = requests.post(
+        f"{VPS_BASE_URL}/run",
+        files=files,
+        headers=headers,
+        timeout=REQ_TIMEOUT,
+    )
+    r.raise_for_status()
+    useful = {
+        "X-Run-Id": r.headers.get("X-Run-Id", ""),
+        "X-Debug": r.headers.get("X-Debug", ""),
+    }
+    return r.content, useful
 
 
 # ==============================
@@ -386,51 +345,36 @@ def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
 
 
 def pick_txts(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
-    return [(k, v) for k, v in files_map.items() if k.lower().endswith(".txt") and "/txt/" in k.lower()]
+    # geralmente: .../txt/arquivo.txt
+    out = []
+    for k, v in files_map.items():
+        kl = k.lower()
+        if kl.endswith(".txt") and "/txt/" in kl:
+            out.append((k, v))
+    return out
 
 
 def summarize_excel_presence(df: pd.DataFrame) -> str:
-    """
-    Comentário “profissional” e útil, sem ficar vazio/óbvio.
-    Baseado apenas nas colunas existentes e padrões simples (sem pontuação).
-    """
     if df is None or df.empty:
         return "Não foi possível abrir a planilha gerada."
 
     cols = [str(c).strip() for c in df.columns]
-    cols_l = [c.lower() for c in cols]
-
-    # tenta achar colunas de fases
     phase_cols = [c for c in cols if c.lower().startswith("check_") or re.match(r"^p[0-4]", c.lower())]
     if not phase_cols:
-        return (
-            "A planilha foi gerada com sucesso. "
-            "Ela não traz colunas explícitas de fases (P0–P4 / CHECK_*), então a leitura deve ser feita pelas colunas do próprio relatório."
-        )
+        return "Planilha gerada com sucesso. Revise as colunas do relatório para interpretar os resultados."
 
-    # interpreta se há muitos zeros (quando numérico)
     try:
         dfn = df[phase_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
         total = float(dfn.sum().sum())
         if total == 0.0:
-            return (
-                "As colunas de fases aparecem na planilha, mas o resultado está zerado neste arquivo. "
-                "Isso normalmente acontece quando a conversa não contém trechos suficientes para caracterizar as fases do método, "
-                "ou quando o texto está muito curto/sem marcação clara."
-            )
-        return (
-            "As fases do método aparecem na planilha. "
-            "Use as colunas de fases para revisar quais etapas foram identificadas e, se houver justificativas/trechos, valide os pontos com a transcrição."
-        )
+            return "As colunas de fases existem, mas o resultado ficou zerado neste arquivo. Isso pode ocorrer em conversas curtas ou sem evidências claras das etapas."
+        return "As fases do método aparecem na planilha. Use as colunas de fases e (se houver) trechos/justificativas para validar a identificação."
     except Exception:
-        return (
-            "As colunas de fases aparecem na planilha, mas não foi possível interpretar os valores automaticamente. "
-            "Ainda assim, você pode revisar as colunas de fases e os campos de justificativa/trechos na tabela."
-        )
+        return "As colunas de fases aparecem na planilha, mas os valores não puderam ser interpretados automaticamente. Revise manualmente as colunas de fases e justificativas."
 
 
 # ==============================
-# 🧩 UI helpers: cards/badges
+# 🧩 UI helpers
 # ==============================
 def render_badges_public(kind: str = "", run_id: str = ""):
     parts = []
@@ -440,11 +384,7 @@ def render_badges_public(kind: str = "", run_id: str = ""):
         parts.append(f'<span class="badge">Protocolo: {run_id}</span>')
 
     st.markdown(
-        f"""
-<div class="card">
-  <p style="margin:0;">{"&nbsp;&nbsp;".join(parts) if parts else "—"}</p>
-</div>
-""",
+        f"""<div class="card"><p style="margin:0;">{"&nbsp;&nbsp;".join(parts) if parts else "—"}</p></div>""",
         unsafe_allow_html=True,
     )
 
@@ -465,7 +405,7 @@ def render_time_card(audio_sec: float, total_sec: float):
     )
 
 
-def render_downloads_explain_individual():
+def downloads_explain_individual():
     st.markdown(
         """
 <div class="card">
@@ -479,15 +419,15 @@ def render_downloads_explain_individual():
     )
 
 
-def render_downloads_explain_batch():
+def downloads_explain_batch():
     st.markdown(
         """
 <div class="card">
   <h3 style="margin:0;">📥 Downloads</h3>
   <p class="smallmuted" style="margin:8px 0 0 0;">
-    • <b>Excel do lote:</b> consolida todos os arquivos enviados.<br/>
-    • <b>Excel individual:</b> planilha separada por arquivo (útil para auditoria).<br/>
-    • <b>TXT rotulado:</b> disponível quando o envio foi por áudio.
+    <b>Excel do lote</b> consolida todos os arquivos. <br/>
+    <b>Excel individual</b> é uma planilha separada por arquivo. <br/>
+    Em envios por áudio, a <b>transcrição (TXT)</b> também fica disponível.
   </p>
 </div>
 """,
@@ -496,51 +436,107 @@ def render_downloads_explain_batch():
 
 
 # ==============================
-# ⏳ Progresso (UI)
+# ⏳ Progresso + timer (FUNCIONA durante o POST)
 # ==============================
-def make_status_ui():
-    status = st.empty()
-    pbar = st.progress(0)
-    timer = st.empty()
+def run_with_progress(
+    title: str,
+    phases: List[Tuple[str, float]],
+    target_func,
+    estimate_total_sec: Optional[float] = None,
+):
+    """
+    Executa target_func em thread e atualiza UI (timer + progress) em loop.
+    phases: lista de (nome, peso acumulado 0..1) para mensagens “trocarem”.
+    estimate_total_sec: só usado se já tivermos histórico (EMA).
+    """
+    st.session_state["processing"] = True
 
+    status_line = st.empty()
+    pbar = st.progress(0)
+    timer_line = st.empty()
+
+    result_holder = {"ok": False, "value": None, "error": None}
     t0 = time.time()
 
-    def update(msg: str, p: float, est_sec: Optional[float]):
+    def _worker():
+        try:
+            val = target_func()
+            result_holder["ok"] = True
+            result_holder["value"] = val
+        except Exception as e:
+            result_holder["error"] = e
+
+    th = threading.Thread(target=_worker, daemon=True)
+    th.start()
+
+    # loop de UI
+    phase_idx = 0
+    last_msg = ""
+    while th.is_alive():
         elapsed = time.time() - t0
-        # estimativa só quando fizer sentido (se fornecer)
-        if est_sec and est_sec > elapsed:
-            timer.markdown(f"<div class='smallmuted'>⏳ Rodando há <b>{human_time(elapsed)}</b> • estimativa: <b>{human_time(est_sec)}</b></div>", unsafe_allow_html=True)
+
+        # progresso heurístico: sobe com o tempo, sem “prometer” 100%
+        if estimate_total_sec and estimate_total_sec > 2:
+            p = min(0.92, elapsed / max(estimate_total_sec, 1.0))
         else:
-            timer.markdown(f"<div class='smallmuted'>⏳ Rodando há <b>{human_time(elapsed)}</b></div>", unsafe_allow_html=True)
+            # sem histórico: cresce devagar e trava em 0.85
+            p = min(0.85, elapsed / 120.0)  # 2min = 100% heurístico (capado)
+        pbar.progress(max(0.01, float(p)))
 
-        status.markdown(
-            f"""
-<div class="card">
-  <h3 style="margin:0;">{msg}</h3>
-  <p class="smallmuted" style="margin:8px 0 0 0;">Aguarde…</p>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-        pbar.progress(max(0, min(1, float(p))))
+        # fase/mensagem
+        if estimate_total_sec and estimate_total_sec > 2:
+            frac = min(0.999, elapsed / estimate_total_sec)
+        else:
+            frac = min(0.999, p / 0.92)
 
-    def done():
-        status.empty()
-        timer.empty()
-        pbar.empty()
+        # escolhe fase pelo frac
+        for i, (_, w) in enumerate(phases):
+            if frac <= w:
+                phase_idx = i
+                break
+        msg = phases[phase_idx][0] if phases else title
 
-    return update, done
+        if msg != last_msg:
+            status_line.markdown(
+                f"<div class='smallmuted'>• {msg}</div>",
+                unsafe_allow_html=True,
+            )
+            last_msg = msg
+
+        if estimate_total_sec and estimate_total_sec > elapsed:
+            timer_line.markdown(
+                f"<div class='smallmuted'>⏳ Rodando há <b>{human_time(elapsed)}</b> • estimativa: <b>{human_time(estimate_total_sec)}</b></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            timer_line.markdown(
+                f"<div class='smallmuted'>⏳ Rodando há <b>{human_time(elapsed)}</b></div>",
+                unsafe_allow_html=True,
+            )
+
+        time.sleep(0.15)
+
+    # thread terminou
+    elapsed = time.time() - t0
+    pbar.progress(1.0)
+    time.sleep(0.05)
+    status_line.empty()
+    timer_line.empty()
+    pbar.empty()
+    st.session_state["processing"] = False
+
+    if not result_holder["ok"]:
+        raise result_holder["error"]
+
+    return result_holder["value"], float(elapsed)
 
 
-# ==============================
-# 🧹 Limpeza no servidor (VPS)
-# ==============================
-# Observação honesta: com o endpoint atual (/run), o painel NÃO tem como apagar as pastas na VPS,
-# porque não existe um endpoint de cleanup. Então:
-# - No painel: limpamos apenas o estado da UI (o que aparece para o usuário).
-# - Na VPS: a limpeza deve ser feita por política do servidor (cron/TTL) ou adicionando endpoint /cleanup.
-#
-# Aqui a gente só mantém a UI consistente e SEM bugs.
+def _ema_update(key: str, x: float, alpha: float = 0.25):
+    old = st.session_state.get(key)
+    if old is None:
+        st.session_state[key] = float(x)
+    else:
+        st.session_state[key] = float(alpha * x + (1 - alpha) * float(old))
 
 
 # ==============================
@@ -552,27 +548,46 @@ def run_single_txt(txt: str):
         st.error(msg)
         return
 
-    update, done = make_status_ui()
-    update("Iniciando avaliação…", 0.05, None)
-
     fname = f"painel_txt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    est = st.session_state.get("ema_txt_sec")
 
-    def cb(msg, p, est):
-        # sem estimativa precisa por enquanto
-        update(msg, p, None)
+    phases = [
+        ("Preparando avaliação…", 0.10),
+        ("Enviando conteúdo…", 0.25),
+        ("Avaliando conversa…", 0.80),
+        ("Gerando planilha…", 0.95),
+        ("Finalizando…", 1.00),
+    ]
+
+    def _do():
+        zip_bytes, hdr = vps_run_file(txt.encode("utf-8", errors="ignore"), fname, "text/plain")
+        return zip_bytes, hdr
 
     try:
-        # request só retorna no fim, mas a UI mostra "rodando há X"
-        update("Avaliando conversa…", 0.25, None)
-        zip_bytes, hdr, elapsed = vps_run_file(txt.encode("utf-8", errors="ignore"), fname, "text/plain", status_cb=cb)
-        update("Abrindo planilha…", 0.95, None)
-    except RuntimeError as e:
-        done()
+        (zip_bytes, hdr), elapsed = run_with_progress(
+            "Avaliando…",
+            phases=phases,
+            target_func=_do,
+            estimate_total_sec=est,
+        )
+    except requests.exceptions.ConnectTimeout:
+        st.error("❌ Não consegui conectar ao servidor.")
+        st.caption(f"Servidor: {_pretty_url(VPS_BASE_URL)}")
+        return
+    except requests.exceptions.ReadTimeout:
+        st.error("❌ O servidor demorou para responder (timeout).")
+        st.caption("Tente um arquivo menor ou aumente API_TIMEOUT_S.")
+        return
+    except requests.exceptions.HTTPError as e:
+        st.error("❌ O servidor retornou erro.")
+        st.code(str(e))
+        return
+    except Exception as e:
         st.error("❌ Não foi possível concluir a avaliação.")
         st.code(str(e))
         return
 
-    done()
+    _ema_update("ema_txt_sec", elapsed)
 
     files_map = zip_extract_all(zip_bytes)
     excels = pick_excels(files_map)
@@ -581,7 +596,6 @@ def run_single_txt(txt: str):
         st.write(list(files_map.keys())[:200])
         return
 
-    # Individual: pega o Excel principal (geralmente o lote ou individual, mas com 1 arquivo tanto faz)
     main_name, main_xlsx = excels[0]
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
     df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
@@ -594,9 +608,6 @@ def run_single_txt(txt: str):
         "excel_bytes": main_xlsx_fmt,
         "df": df,
         "timings": {"audio_sec": 0.0, "total_sec": float(elapsed)},
-        # extras (não mostramos no individual)
-        "zip_bytes": zip_bytes,
-        "files_map": files_map,
     }
     st.session_state["last_run_id"] = hdr.get("X-Run-Id", "")
 
@@ -608,25 +619,46 @@ def run_single_wav(wav_file):
         st.error(f"❌ Áudio tem {audio_sec/60:.1f} minutos. Limite recomendado: 10 minutos.")
         return
 
-    update, done = make_status_ui()
-    update("Iniciando avaliação…", 0.05, None)
+    est = st.session_state.get("ema_wav_sec")
 
-    def cb(msg, p, est):
-        update(msg, p, None)
+    phases = [
+        ("Preparando avaliação…", 0.10),
+        ("Enviando áudio…", 0.25),
+        ("Transcrevendo áudio…", 0.55),
+        ("Avaliando conversa…", 0.85),
+        ("Gerando planilha…", 0.95),
+        ("Finalizando…", 1.00),
+    ]
+
+    def _do():
+        zip_bytes, hdr = vps_run_file(wav_bytes, wav_file.name, "audio/wav")
+        return zip_bytes, hdr
 
     try:
-        update("Transcrevendo áudio…", 0.25, None)
-        # o servidor faz tudo internamente; aqui a gente apenas comunica “o que está acontecendo”
-        update("Avaliando conversa…", 0.60, None)
-        zip_bytes, hdr, elapsed = vps_run_file(wav_bytes, wav_file.name, "audio/wav", status_cb=cb)
-        update("Abrindo planilha…", 0.95, None)
-    except RuntimeError as e:
-        done()
+        (zip_bytes, hdr), elapsed = run_with_progress(
+            "Avaliando…",
+            phases=phases,
+            target_func=_do,
+            estimate_total_sec=est,
+        )
+    except requests.exceptions.ConnectTimeout:
+        st.error("❌ Não consegui conectar ao servidor.")
+        st.caption(f"Servidor: {_pretty_url(VPS_BASE_URL)}")
+        return
+    except requests.exceptions.ReadTimeout:
+        st.error("❌ O servidor demorou para responder (timeout).")
+        st.caption("Tente um áudio menor ou aumente API_TIMEOUT_S.")
+        return
+    except requests.exceptions.HTTPError as e:
+        st.error("❌ O servidor retornou erro.")
+        st.code(str(e))
+        return
+    except Exception as e:
         st.error("❌ Não foi possível concluir a avaliação.")
         st.code(str(e))
         return
 
-    done()
+    _ema_update("ema_wav_sec", elapsed)
 
     files_map = zip_extract_all(zip_bytes)
     excels = pick_excels(files_map)
@@ -639,7 +671,6 @@ def run_single_wav(wav_file):
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
     df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
 
-    # se houver TXT rotulado no zip, deixamos disponível para download separado (sem ZIP)
     txts = pick_txts(files_map)
     txt_best = txts[0][1].decode("utf-8", errors="ignore") if txts else ""
 
@@ -652,9 +683,6 @@ def run_single_wav(wav_file):
         "df": df,
         "timings": {"audio_sec": float(audio_sec or 0.0), "total_sec": float(elapsed)},
         "txt_rotulado": txt_best,
-        # extras (não mostramos no individual)
-        "zip_bytes": zip_bytes,
-        "files_map": files_map,
     }
     st.session_state["last_run_id"] = hdr.get("X-Run-Id", "")
 
@@ -664,12 +692,9 @@ def run_single_wav(wav_file):
 # ==============================
 def run_batch_txt(files: List[Any], pasted_blocks: List[str]):
     entradas: List[Tuple[str, str]] = []
-
     if files:
         for f in files[:10]:
-            content = f.getvalue().decode("utf-8", errors="ignore")
-            entradas.append((f.name, content))
-
+            entradas.append((f.name, f.getvalue().decode("utf-8", errors="ignore")))
     if pasted_blocks:
         for i, b in enumerate(pasted_blocks[:10], start=1):
             entradas.append((f"colado_{i}.txt", b))
@@ -678,154 +703,183 @@ def run_batch_txt(files: List[Any], pasted_blocks: List[str]):
         st.error("Envie TXT(s) ou cole pelo menos um bloco.")
         return
 
-    # valida antes
     for name, txt in entradas:
         ok, msg = validar_transcricao(txt)
         if not ok:
             st.error(f"❌ {name}: {msg}")
             return
 
-    update, done = make_status_ui()
-    update("Iniciando lote…", 0.05, None)
+    est_item = st.session_state.get("ema_batch_item_sec")
+    est_total = (est_item * len(entradas)) if est_item else None
 
-    itens: List[dict] = []
-    t_total = 0.0
+    phases = [
+        ("Preparando lote…", 0.10),
+        ("Enviando arquivos…", 0.25),
+        ("Avaliando lote…", 0.85),
+        ("Consolidando planilha…", 0.95),
+        ("Finalizando…", 1.00),
+    ]
 
-    for idx, (name, txt) in enumerate(entradas, start=1):
-        update(f"Avaliando {idx}/{len(entradas)}…", 0.10 + 0.80 * (idx - 1) / max(1, len(entradas)), None)
-        try:
-            zip_bytes, hdr, elapsed = vps_run_file(txt.encode("utf-8", errors="ignore"), name, "text/plain")
-        except RuntimeError as e:
-            done()
-            st.error(f"❌ Falha ao avaliar {name}")
-            st.code(str(e))
-            return
+    def _do():
+        itens: List[dict] = []
+        lote_excel_payload = None
+        for idx, (name, txt) in enumerate(entradas, start=1):
+            zip_bytes, hdr = vps_run_file(txt.encode("utf-8", errors="ignore"), name, "text/plain")
+            files_map = zip_extract_all(zip_bytes)
+            excels = pick_excels(files_map)
 
-        t_total += float(elapsed)
-        files_map = zip_extract_all(zip_bytes)
-        excels = pick_excels(files_map)
-
-        # por item: queremos o excel individual
-        indiv_name = ""
-        indiv_xlsx_fmt = b""
-        if excels:
-            # se tiver _SPIN.xlsx preferir ele como individual
+            # individual do item: preferir _SPIN.xlsx
+            indiv_name = ""
+            indiv_xlsx_fmt = b""
             chosen = None
             for nm, xb in excels:
                 if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
                     chosen = (nm, xb)
                     break
-            if not chosen:
+            if not chosen and excels:
                 chosen = excels[0]
-            indiv_name, indiv_xlsx = chosen
-            indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
+            if chosen:
+                indiv_name, indiv_xlsx = chosen
+                indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
 
-        itens.append(
-            {
-                "idx": idx,
-                "kind": "txt",
-                "filename": name,
-                "run_id": hdr.get("X-Run-Id", ""),
-                "excel_individual_name": indiv_name,
-                "excel_individual_bytes": indiv_xlsx_fmt,
-            }
+            itens.append(
+                {
+                    "idx": idx,
+                    "kind": "txt",
+                    "filename": name,
+                    "run_id": hdr.get("X-Run-Id", ""),
+                    "excel_individual_name": indiv_name,
+                    "excel_individual_bytes": indiv_xlsx_fmt,
+                }
+            )
+
+            # lote (consolidado): SPIN_RESULTADOS_LOTE
+            for nm, xb in excels:
+                if "spin_resultados_lote" in nm.lower():
+                    lote_excel_payload = (nm, format_excel_bytes(xb))
+                    break
+
+        return itens, lote_excel_payload
+
+    try:
+        (itens, lote_excel_payload), elapsed = run_with_progress(
+            "Processando lote…",
+            phases=phases,
+            target_func=_do,
+            estimate_total_sec=est_total,
         )
+    except Exception as e:
+        st.error("❌ Não foi possível concluir o lote.")
+        st.code(str(e))
+        return
 
-        # lote: quando houver SPIN_RESULTADOS_LOTE, guardamos para “excel aberto do lote”
-        lote_excel = None
-        for nm, xb in excels:
-            if "spin_resultados_lote" in nm.lower():
-                lote_excel = (nm, format_excel_bytes(xb))
-                break
-
-        # se só há 1 arquivo, pode existir lote também. no batch, sempre priorizamos lote
-        if lote_excel:
-            st.session_state["batch_lote"] = {
-                "excel_name": lote_excel[0],
-                "excel_bytes": lote_excel[1],
-                "df": _safe_df(excel_bytes_to_df(lote_excel[1])),
-            }
-
-    done()
+    # atualiza EMA por item
+    if len(entradas) > 0:
+        _ema_update("ema_batch_item_sec", elapsed / max(1, len(entradas)))
 
     st.session_state["batch_results"] = itens
     st.session_state["last_run_id"] = (itens[-1]["run_id"] if itens else "")
+
+    if lote_excel_payload:
+        nm, xb = lote_excel_payload
+        st.session_state["batch_lote"] = {
+            "excel_name": nm,
+            "excel_bytes": xb,
+            "df": _safe_df(excel_bytes_to_df(xb)),
+        }
+    else:
+        st.session_state["batch_lote"] = None
 
 
 def run_batch_wav(wavs: List[Any]):
     if not wavs:
         st.error("Envie pelo menos 1 WAV.")
         return
-    if len(wavs) > 10:
-        st.error("Limite: 10 áudios por lote.")
-        return
+    wavs = wavs[:10]
 
-    update, done = make_status_ui()
-    update("Iniciando lote…", 0.05, None)
+    est_item = st.session_state.get("ema_batch_item_sec")
+    est_total = (est_item * len(wavs)) if est_item else None
 
-    itens: List[dict] = []
+    phases = [
+        ("Preparando lote…", 0.10),
+        ("Enviando áudios…", 0.25),
+        ("Transcrevendo e avaliando…", 0.85),
+        ("Consolidando planilha…", 0.95),
+        ("Finalizando…", 1.00),
+    ]
 
-    for idx, wavf in enumerate(wavs[:10], start=1):
-        update(f"Processando {idx}/{min(10, len(wavs))}…", 0.10 + 0.80 * (idx - 1) / max(1, min(10, len(wavs))), None)
+    def _do():
+        itens: List[dict] = []
+        lote_excel_payload = None
+        for idx, wavf in enumerate(wavs, start=1):
+            wav_bytes = wavf.getbuffer().tobytes()
+            zip_bytes, hdr = vps_run_file(wav_bytes, wavf.name, "audio/wav")
+            files_map = zip_extract_all(zip_bytes)
+            excels = pick_excels(files_map)
 
-        wav_bytes = wavf.getbuffer().tobytes()
-        try:
-            zip_bytes, hdr, elapsed = vps_run_file(wav_bytes, wavf.name, "audio/wav")
-        except RuntimeError as e:
-            done()
-            st.error(f"❌ Falha ao avaliar {wavf.name}")
-            st.code(str(e))
-            return
-
-        files_map = zip_extract_all(zip_bytes)
-        excels = pick_excels(files_map)
-
-        # individual do item
-        indiv_name = ""
-        indiv_xlsx_fmt = b""
-        if excels:
             chosen = None
             for nm, xb in excels:
                 if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
                     chosen = (nm, xb)
                     break
-            if not chosen:
+            if not chosen and excels:
                 chosen = excels[0]
-            indiv_name, indiv_xlsx = chosen
-            indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
 
-        # txt rotulado separado
-        txts = pick_txts(files_map)
-        txt_best = txts[0][1].decode("utf-8", errors="ignore") if txts else ""
+            indiv_name = ""
+            indiv_xlsx_fmt = b""
+            if chosen:
+                indiv_name, indiv_xlsx = chosen
+                indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
 
-        itens.append(
-            {
-                "idx": idx,
-                "kind": "wav",
-                "filename": wavf.name,
-                "run_id": hdr.get("X-Run-Id", ""),
-                "excel_individual_name": indiv_name,
-                "excel_individual_bytes": indiv_xlsx_fmt,
-                "txt_rotulado": txt_best,
-            }
+            txts = pick_txts(files_map)
+            txt_best = txts[0][1].decode("utf-8", errors="ignore") if txts else ""
+
+            itens.append(
+                {
+                    "idx": idx,
+                    "kind": "wav",
+                    "filename": wavf.name,
+                    "run_id": hdr.get("X-Run-Id", ""),
+                    "excel_individual_name": indiv_name,
+                    "excel_individual_bytes": indiv_xlsx_fmt,
+                    "txt_rotulado": txt_best,
+                }
+            )
+
+            for nm, xb in excels:
+                if "spin_resultados_lote" in nm.lower():
+                    lote_excel_payload = (nm, format_excel_bytes(xb))
+                    break
+
+        return itens, lote_excel_payload
+
+    try:
+        (itens, lote_excel_payload), elapsed = run_with_progress(
+            "Processando lote…",
+            phases=phases,
+            target_func=_do,
+            estimate_total_sec=est_total,
         )
+    except Exception as e:
+        st.error("❌ Não foi possível concluir o lote.")
+        st.code(str(e))
+        return
 
-        # lote
-        lote_excel = None
-        for nm, xb in excels:
-            if "spin_resultados_lote" in nm.lower():
-                lote_excel = (nm, format_excel_bytes(xb))
-                break
-        if lote_excel:
-            st.session_state["batch_lote"] = {
-                "excel_name": lote_excel[0],
-                "excel_bytes": lote_excel[1],
-                "df": _safe_df(excel_bytes_to_df(lote_excel[1])),
-            }
+    if len(wavs) > 0:
+        _ema_update("ema_batch_item_sec", elapsed / max(1, len(wavs)))
 
-    done()
     st.session_state["batch_results"] = itens
     st.session_state["last_run_id"] = (itens[-1]["run_id"] if itens else "")
+
+    if lote_excel_payload:
+        nm, xb = lote_excel_payload
+        st.session_state["batch_lote"] = {
+            "excel_name": nm,
+            "excel_bytes": xb,
+            "df": _safe_df(excel_bytes_to_df(xb)),
+        }
+    else:
+        st.session_state["batch_lote"] = None
 
 
 # ==============================
@@ -840,7 +894,7 @@ st.markdown("---")
 
 
 # ==============================
-# 🧭 Sidebar (sem URLs / sem técnica)
+# 🧭 Sidebar (sem técnica)
 # ==============================
 with st.sidebar:
     st.markdown("### 🧭 Navegação")
@@ -859,7 +913,7 @@ with st.sidebar:
 
     st.markdown("---")
 
-    online = vps_health()
+    online, health_json = vps_health_ui()
     if online:
         st.success("Servidor conectado ✅")
     else:
@@ -872,21 +926,29 @@ with st.sidebar:
 
 
 # ==============================
-# ✅ UI: Telas
+# ✅ UI: Telas (SEM tabs bugadas)
 # ==============================
 if st.session_state["view"] == "single":
     st.markdown("### 👤 Avaliação Individual")
-    tab_txt, tab_wav = st.tabs(["📝 Texto", "🎧 Áudio"])
 
-    # -------- TXT
-    with tab_txt:
-        # reset ao trocar de aba
-        if st.session_state.get("single_tab") != "txt":
-            clear_single()
-            st.session_state["single_tab"] = "txt"
+    single_mode = st.radio(
+        "Entrada",
+        options=["txt", "wav"],
+        format_func=lambda x: "📝 Texto" if x == "txt" else "🎧 Áudio",
+        horizontal=True,
+        key="radio_single_mode",
+    )
 
-        st.markdown("<div class='smallmuted'>O texto deve começar as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>", unsafe_allow_html=True)
+    # reset ao trocar
+    if single_mode != st.session_state.get("single_mode"):
+        clear_single()
+        st.session_state["single_mode"] = single_mode
 
+    if single_mode == "txt":
+        st.markdown(
+            "<div class='smallmuted'>O texto deve começar as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
+            unsafe_allow_html=True,
+        )
         txt_input = st.text_area(
             "Cole a transcrição aqui",
             height=260,
@@ -906,12 +968,7 @@ if st.session_state["view"] == "single":
                 clear_single()
                 st.rerun()
 
-    # -------- WAV
-    with tab_wav:
-        if st.session_state.get("single_tab") != "wav":
-            clear_single()
-            st.session_state["single_tab"] = "wav"
-
+    else:
         up_wav = st.file_uploader(
             "Envie um WAV (até ~10 min)",
             type=["wav"],
@@ -935,16 +992,24 @@ if st.session_state["view"] == "single":
 
 else:
     st.markdown("### 📊 Visão Gerencial (até 10)")
-    tab_txt, tab_wav = st.tabs(["📝 Texto", "🎧 Áudio"])
 
-    # -------- BATCH TXT
-    with tab_txt:
-        if st.session_state.get("batch_tab") != "txt":
-            clear_batch()
-            st.session_state["batch_tab"] = "txt"
+    batch_mode = st.radio(
+        "Entrada",
+        options=["txt", "wav"],
+        format_func=lambda x: "📝 Texto" if x == "txt" else "🎧 Áudio",
+        horizontal=True,
+        key="radio_batch_mode",
+    )
 
-        st.markdown("<div class='smallmuted'>Os textos devem começar as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>", unsafe_allow_html=True)
+    if batch_mode != st.session_state.get("batch_mode"):
+        clear_batch()
+        st.session_state["batch_mode"] = batch_mode
 
+    if batch_mode == "txt":
+        st.markdown(
+            "<div class='smallmuted'>Os textos devem começar as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
+            unsafe_allow_html=True,
+        )
         up_txts = st.file_uploader(
             "Envie até 10 arquivos .txt",
             type=["txt"],
@@ -975,12 +1040,7 @@ else:
                 clear_batch()
                 st.rerun()
 
-    # -------- BATCH WAV
-    with tab_wav:
-        if st.session_state.get("batch_tab") != "wav":
-            clear_batch()
-            st.session_state["batch_tab"] = "wav"
-
+    else:
         up_wavs = st.file_uploader(
             "Envie até 10 WAVs",
             type=["wav"],
@@ -1002,10 +1062,7 @@ else:
 
 # ==============================
 # ✅ RESULTADO: Individual
-# - Excel primeiro (aberto)
-# - Tempo logo abaixo
-# - Comentário profissional opcional (curto e útil)
-# - Downloads sem ZIP (excel + txt se tiver)
+# Excel primeiro, tempo abaixo, observação curta, downloads sem ZIP
 # ==============================
 lr = st.session_state.get("last_result")
 if lr and isinstance(lr.get("df"), pd.DataFrame):
@@ -1023,7 +1080,6 @@ if lr and isinstance(lr.get("df"), pd.DataFrame):
     total_sec = float(timings.get("total_sec", 0) or 0)
     render_time_card(audio_sec, total_sec)
 
-    # Comentário (bem mais útil e direto). Se preferir tirar, basta remover este bloco.
     comment = summarize_excel_presence(df)
     st.markdown(
         f"""
@@ -1035,7 +1091,7 @@ if lr and isinstance(lr.get("df"), pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-    render_downloads_explain_individual()
+    downloads_explain_individual()
 
     filename = lr.get("filename") or f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     base = Path(filename).stem
@@ -1049,7 +1105,6 @@ if lr and isinstance(lr.get("df"), pd.DataFrame):
         key=f"dl_excel_single_{base}",
     )
 
-    # Se veio de WAV e existir txt rotulado, deixa separado
     if lr.get("kind") == "wav":
         txt_rot = (lr.get("txt_rotulado") or "").strip()
         if txt_rot:
@@ -1064,8 +1119,7 @@ if lr and isinstance(lr.get("df"), pd.DataFrame):
 
 # ==============================
 # ✅ RESULTADO: Lote
-# - Excel do lote ABERTO (prioritário)
-# - Depois downloads (lote + por item)
+# Excel do lote ABERTO (prioritário) + downloads
 # ==============================
 br = st.session_state.get("batch_results")
 batch_lote = st.session_state.get("batch_lote")
@@ -1074,14 +1128,12 @@ if br:
     st.markdown("---")
     st.markdown("## ✅ Resultados do lote")
 
-    # Excel do lote aberto primeiro
     if batch_lote and isinstance(batch_lote.get("df"), pd.DataFrame) and not batch_lote["df"].empty:
         st.markdown("### 📊 Planilha do lote (aberta)")
         st.dataframe(batch_lote["df"], use_container_width=True)
 
-    render_downloads_explain_batch()
+    downloads_explain_batch()
 
-    # Baixar Excel do lote
     if batch_lote and batch_lote.get("excel_bytes"):
         st.download_button(
             "📥 Baixar Excel do lote",
@@ -1099,7 +1151,6 @@ if br:
         base = Path(filename).stem
 
         with st.expander(f"📌 {idx}. {filename}", expanded=False):
-            # Excel individual
             xb = item.get("excel_individual_bytes", b"")
             if xb:
                 st.download_button(
@@ -1113,7 +1164,6 @@ if br:
             else:
                 st.warning("Excel individual não disponível para este item.")
 
-            # TXT rotulado (quando veio de áudio)
             if item.get("kind") == "wav":
                 txt_rot = (item.get("txt_rotulado") or "").strip()
                 if txt_rot:
@@ -1127,7 +1177,7 @@ if br:
 
 
 # ==============================
-# 🧾 Rodapé (mantido)
+# 🧾 Rodapé
 # ==============================
 st.markdown("---")
 st.markdown(
