@@ -66,7 +66,7 @@ EXCEL_TEXT_COL_W = int(_get_cfg("EXCEL_TEXT_COL_W", "55"))
 EXCEL_MAX_COL_W = int(_get_cfg("EXCEL_MAX_COL_W", "80"))
 
 # Local-friendly:
-# - MODE=LOCAL permite rodar apontando BASE_URL para um serviço local (ex: http://127.0.0.1:8000)
+# - MODE=LOCAL permite rodar apontando BASE_URL para um serviço local
 # - API_KEY fica opcional em LOCAL
 if not BASE_URL:
     if MODE == "LOCAL":
@@ -899,7 +899,7 @@ st.markdown("")
 
 
 # ==============================
-# 🧭 Sidebar (sem termos técnicos)
+# 🧭 Sidebar (sem termos técnicos) — COM keys
 # ==============================
 with st.sidebar:
     st.markdown("### Navegação")
@@ -907,12 +907,12 @@ with st.sidebar:
 
     colA, colB = st.columns(2)
     with colA:
-        if st.button("👤 Individual", use_container_width=True, disabled=nav_disabled):
+        if st.button("👤 Individual", use_container_width=True, disabled=nav_disabled, key="sb_btn_individual"):
             if st.session_state["view"] != "single":
                 clear_batch()
             st.session_state["view"] = "single"
     with colB:
-        if st.button("📊 Gerencial", use_container_width=True, disabled=nav_disabled):
+        if st.button("📊 Gerencial", use_container_width=True, disabled=nav_disabled, key="sb_btn_gerencial"):
             if st.session_state["view"] != "batch":
                 clear_single()
             st.session_state["view"] = "batch"
@@ -926,7 +926,7 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if st.button("🧹 Limpar resultados", use_container_width=True, disabled=nav_disabled):
+    if st.button("🧹 Limpar resultados", use_container_width=True, disabled=nav_disabled, key="sb_btn_clear_all"):
         clear_all()
 
 
@@ -950,7 +950,7 @@ if st.session_state["view"] == "single":
         options=["text", "wav"],
         format_func=lambda x: "📝 Texto" if x == "text" else "🎧 Áudio (WAV)",
         horizontal=True,
-        key="radio_single_mode",
+        key="single_radio_mode",
         disabled=st.session_state.get("processing", False),
     )
 
@@ -967,18 +967,22 @@ if st.session_state["view"] == "single":
             "Cole a conversa aqui",
             height=260,
             value="",
-            key="txt_input_single",
+            key="single_text_input",
             placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n[VENDEDOR] ...",
             disabled=st.session_state.get("processing", False),
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Gerar relatório", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("✅ Gerar relatório", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_run_text"):
                 clear_single()
                 run_single_text(txt_input)
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_clear_text"):
                 clear_single()
 
     else:
@@ -986,20 +990,24 @@ if st.session_state["view"] == "single":
             "Envie um arquivo WAV",
             type=["wav"],
             accept_multiple_files=False,
-            key="uploader_wav_single",
+            key="single_uploader_wav",
             disabled=st.session_state.get("processing", False),
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Gerar relatório", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("✅ Gerar relatório", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_run_wav"):
                 if up_wav is None:
                     st.warning("Envie um arquivo WAV para continuar.")
                 else:
                     clear_single()
                     run_single_wav(up_wav)
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_clear_wav"):
                 clear_single()
 
 
@@ -1023,7 +1031,7 @@ else:
         options=["text", "wav"],
         format_func=lambda x: "📝 Texto" if x == "text" else "🎧 Áudio (WAV)",
         horizontal=True,
-        key="radio_batch_mode",
+        key="batch_radio_mode",
         disabled=st.session_state.get("processing", False),
     )
 
@@ -1043,7 +1051,7 @@ else:
             "Envie arquivos de texto",
             type=["txt"],
             accept_multiple_files=True,
-            key="uploader_text_batch",
+            key="batch_uploader_text",
             disabled=st.session_state.get("processing", False),
         )
 
@@ -1055,21 +1063,25 @@ else:
             "Cole aqui",
             height=220,
             value="",
-            key="txt_input_batch",
+            key="batch_text_input",
             placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n---\n[VENDEDOR] ...\n[CLIENTE] ...",
             disabled=st.session_state.get("processing", False),
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Gerar relatório do lote", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("✅ Gerar relatório do lote", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_run_text"):
                 blocks = []
                 if multi_txt.strip():
                     blocks = [b.strip() for b in multi_txt.split("\n---\n") if b.strip()]
                 clear_batch()
                 run_batch_text(up_txts or [], blocks)
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_clear_text"):
                 clear_batch()
 
     else:
@@ -1077,22 +1089,26 @@ else:
             "Envie arquivos WAV",
             type=["wav"],
             accept_multiple_files=True,
-            key="uploader_wav_batch",
+            key="batch_uploader_wav",
             disabled=st.session_state.get("processing", False),
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Gerar relatório do lote", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("✅ Gerar relatório do lote", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_run_wav"):
                 clear_batch()
                 run_batch_wav(up_wavs or [])
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_clear_wav"):
                 clear_batch()
 
 
 # ==============================
-# ✅ RESULTADO: Individual (somente Excel)
+# ✅ RESULTADO: Individual (somente Excel) — COM key no download
 # ==============================
 single_payload = _store_get(st.session_state.get("single_result_id", ""))
 if single_payload and single_payload.get("type") == "single":
@@ -1185,12 +1201,12 @@ if single_payload and single_payload.get("type") == "single":
         file_name=f"{base}_avaliacao.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
-        key=f"dl_single_excel_{base}_{single_payload.get('created_at',0)}",
+        key=f"dl_single_{single_payload.get('created_at',0)}_{base}",
     )
 
 
 # ==============================
-# ✅ RESULTADO: Lote (somente Excel)
+# ✅ RESULTADO: Lote (somente Excel) — COM keys nos downloads
 # ==============================
 batch_payload = _store_get(st.session_state.get("batch_result_id", ""))
 if batch_payload and batch_payload.get("type") == "batch":
@@ -1242,7 +1258,7 @@ if batch_payload and batch_payload.get("type") == "batch":
             file_name=f"lote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key=f"dl_lote_excel_{batch_payload.get('created_at',0)}",
+            key=f"dl_batch_lote_{batch_payload.get('created_at',0)}",
         )
     else:
         st.info("Arquivo consolidado não disponível para download.")
@@ -1273,7 +1289,7 @@ if batch_payload and batch_payload.get("type") == "batch":
                     file_name=f"{base}_avaliacao.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
-                    key=f"dl_item_excel_{idx}_{base}_{batch_payload.get('created_at',0)}",
+                    key=f"dl_batch_item_{batch_payload.get('created_at',0)}_{idx}_{base}",
                 )
             else:
                 st.info("Planilha individual não disponível para este item.")
