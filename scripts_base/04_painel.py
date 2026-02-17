@@ -340,89 +340,139 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
 # ==============================
 # 📌 Consolidado: construir localmente a partir das planilhas individuais
 # ==============================
-def _excel_row_count(excel_bytes: bytes) -> int:
+def _norm_key(v: Any) -> str:
+    s = "" if v is None else str(v)
+    s = s.strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = s.replace("_", " ")
+    return s
+
+
+def _find_col_index(headers: List[Any], candidates: List[str]) -> int:
+    if not headers:
+        return -1
+    hnorm = [_norm_key(h) for h in headers]
+    cand = [_norm_key(c) for c in candidates]
+    for c in cand:
+        if c in hnorm:
+            return hnorm.index(c)
+    for c in cand:
+        for i, hv in enumerate(hnorm):
+            if hv and c and (c in hv or hv in c):
+                return i
+    return -1
+
+
+def _read_individual_rows_for_consolidation(excel_bytes: bytes) -> List[List[Any]]:
+    """
+    Extrai do Excel individual apenas as colunas exigidas para o consolidado:
+    SPIN SELLING | CHECK_01 | CHECK_02 | RESULTADO TEXTO
+    Mantém exatamente o texto já devolvido pelo serviço em RESULTADO TEXTO.
+    """
     if not excel_bytes:
-        return 0
+        return []
+
     try:
         from openpyxl import load_workbook
-        wb = load_workbook(io.BytesIO(excel_bytes), read_only=True, data_only=True)
-        ws = wb.active
-        return int(ws.max_row or 0)
     except Exception:
-        return 0
+        return []
 
+    try:
+        wb = load_workbook(io.BytesIO(excel_bytes), data_only=True, read_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows or len(rows) < 2:
+            return []
 
-def _sheet_to_matrix(ws):
-    rows = []
-    for r in ws.iter_rows(values_only=True):
-        rows.append(list(r))
-    return rows
+        headers = list(rows[0])
 
+        i_spin = _find_col_index(headers, ["SPIN SELLING", "SPIN", "Fase", "Fase SPIN", "SPIN Selling"])
+        i_c1 = _find_col_index(headers, ["CHECK_01", "CHECK 01", "CHECK01"])
+        i_c2 = _find_col_index(headers, ["CHECK_02", "CHECK 02", "CHECK02"])
+        i_res = _find_col_index(headers, ["RESULTADO TEXTO", "RESULTADO", "RESULTADO_TEXTO", "RESULTADO TEX", "RESULTADO TEXTUAL"])
 
-def _normalize_header_row(row):
-    return [("" if v is None else str(v).strip()) for v in (row or [])]
+        if i_spin < 0 or i_c1 < 0 or i_c2 < 0 or i_res < 0:
+            return []
+
+        out = []
+        for r in rows[1:]:
+            if r is None:
+                continue
+
+            spin = r[i_spin] if i_spin < len(r) else None
+            c1 = r[i_c1] if i_c1 < len(r) else None
+            c2 = r[i_c2] if i_c2 < len(r) else None
+            res = r[i_res] if i_res < len(r) else None
+
+            if spin is None and c1 is None and c2 is None and res is None:
+                continue
+
+            out.append([spin, c1, c2, res])
+
+        return out
+    except Exception:
+        return []
 
 
 def build_consolidated_from_individual_excels(items: List[dict]) -> Tuple[bytes, str]:
     """
-    Consolida o lote unindo as linhas das planilhas individuais:
-    - Cabeçalho vem da primeira planilha válida
-    - Demais linhas são anexadas (row2..fim) de cada planilha
-    - Se houver divergência de colunas, alinha pelo cabeçalho
+    Consolida o lote localmente no formato por ligação:
+
+    <nome do arquivo>
+    SPIN SELLING | CHECK_01 | CHECK_02 | RESULTADO TEXTO
+    P0_abertura  | ...      | ...      | IDÊNTICO ou DIFERENTE
+    ...
+    linha em branco
     """
     try:
-        from openpyxl import load_workbook, Workbook
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment
     except Exception:
         return b"", ""
-
-    header = None
-    out_rows = []
-
-    for it in items:
-        xb = it.get("excel_individual_bytes", b"")
-        if not xb:
-            continue
-
-        try:
-            wb = load_workbook(io.BytesIO(xb), data_only=True, read_only=True)
-            ws = wb.active
-            mat = _sheet_to_matrix(ws)
-            if not mat or len(mat) < 2:
-                continue
-
-            h = _normalize_header_row(mat[0])
-            if header is None:
-                header = h
-
-            if header and h and header != h:
-                idx_map = {str(col).strip(): i for i, col in enumerate(h)}
-                for data_row in mat[1:]:
-                    new_row = []
-                    for col_name in header:
-                        j = idx_map.get(col_name, None)
-                        new_row.append(data_row[j] if (j is not None and j < len(data_row)) else None)
-                    out_rows.append(new_row)
-            else:
-                out_rows.extend(mat[1:])
-
-        except Exception:
-            continue
-
-    if header is None:
-        return b"", ""
-
-    cleaned = []
-    for r in out_rows:
-        if any((v is not None and str(v).strip() != "") for v in (r or [])):
-            cleaned.append(r)
 
     wb_out = Workbook()
     ws_out = wb_out.active
     ws_out.title = "SPIN_RESULTADOS_LOTE"
 
-    ws_out.append(header)
-    for r in cleaned:
-        ws_out.append(r)
+    header = ["SPIN SELLING", "CHECK_01", "CHECK_02", "RESULTADO TEXTO"]
+
+    bold = Font(bold=True)
+    title_font = Font(bold=True, size=12)
+    left = Alignment(horizontal="left", vertical="top", wrap_text=False)
+
+    def _append_blank():
+        ws_out.append([None, None, None, None])
+
+    for it in items or []:
+        filename = str(it.get("filename") or "").strip()
+        if not filename:
+            filename = "item"
+
+        # Linha de cabeçalho do bloco com o nome do arquivo
+        ws_out.append([Path(filename).stem, None, None, None])
+        ws_out.cell(row=ws_out.max_row, column=1).font = title_font
+        ws_out.cell(row=ws_out.max_row, column=1).alignment = left
+
+        # Cabeçalho da tabela do bloco
+        ws_out.append(header)
+        for c in range(1, 5):
+            cell = ws_out.cell(row=ws_out.max_row, column=c)
+            cell.font = bold
+            cell.alignment = left
+
+        # Linhas de dados do bloco
+        rows = _read_individual_rows_for_consolidation(it.get("excel_individual_bytes", b""))
+        for r in rows:
+            ws_out.append(list(r[:4]) + [None] * max(0, 4 - len(r[:4])))
+            for c in range(1, 5):
+                ws_out.cell(row=ws_out.max_row, column=c).alignment = left
+
+        # Linha em branco entre ligações
+        _append_blank()
+
+    # Se não gerou nada útil, retorna vazio para manter comportamento atual
+    if ws_out.max_row <= 1:
+        return b"", ""
 
     out = io.BytesIO()
     wb_out.save(out)
@@ -958,7 +1008,7 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
                 lote_excel_bytes = format_excel_bytes(xb)
                 break
 
-    # Consolidação local: garante que o lote tenha todas as linhas (corrige “só 1 linha”)
+    # Consolidação local: padrão por ligação, com RESULTADO TEXTO vindo do Excel individual
     local_bytes, local_name = build_consolidated_from_individual_excels(itens)
     if local_bytes:
         lote_excel_bytes = format_excel_bytes(local_bytes)
@@ -1045,7 +1095,7 @@ def run_batch_audio(wavs: List[Any]):
                 lote_excel_bytes = format_excel_bytes(xb)
                 break
 
-    # Consolidação local: garante que o lote tenha todas as linhas (corrige “só 1 linha”)
+    # Consolidação local: padrão por ligação, com RESULTADO TEXTO vindo do Excel individual
     local_bytes, local_name = build_consolidated_from_individual_excels(itens)
     if local_bytes:
         lote_excel_bytes = format_excel_bytes(local_bytes)
