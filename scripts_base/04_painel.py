@@ -2,10 +2,10 @@
 # 🎧 SPIN Analyzer — Painel
 # ✅ Saída: SOMENTE PLANILHAS
 # ✅ Individual: exibe planilha na tela e permite download
-# ✅ Gerencial: destaca o consolidado na tela e permite download do lote e individuais
+# ✅ Gerencial: gera planilhas individuais e permite abrir e baixar cada uma
 # ✅ UX: visual premium, mensagens curtas, foco no cliente
 # ✅ Progresso e tempo: atualizam durante o processamento
-# ✅ Sessão leve: nunca guarda ZIP nem mapas grandes
+# ✅ Sessão leve: não guarda ZIP nem mapas grandes
 # ✅ Limites no gerencial: Áudio até 5 arquivos e 10 minutos cada | Texto até 8 entradas
 # ===============================================
 
@@ -228,7 +228,6 @@ def _ensure_state():
 
     st.session_state.setdefault("last_result", None)
     st.session_state.setdefault("batch_results", None)
-    st.session_state.setdefault("batch_lote", None)
 
     st.session_state.setdefault("_prev_view", st.session_state["view"])
     st.session_state.setdefault("_prev_single_mode", st.session_state["single_mode"])
@@ -241,7 +240,6 @@ _ensure_state()
 def clear_all_results():
     st.session_state["last_result"] = None
     st.session_state["batch_results"] = None
-    st.session_state["batch_lote"] = None
 
 
 def clear_single():
@@ -250,7 +248,6 @@ def clear_single():
 
 def clear_batch():
     st.session_state["batch_results"] = None
-    st.session_state["batch_lote"] = None
 
 
 # ==============================
@@ -335,150 +332,6 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
-
-
-# ==============================
-# 📌 Consolidado: construir localmente a partir das planilhas individuais
-# ==============================
-def _norm_key(v: Any) -> str:
-    s = "" if v is None else str(v)
-    s = s.strip().lower()
-    s = re.sub(r"\s+", " ", s)
-    s = s.replace("_", " ")
-    return s
-
-
-def _find_col_index(headers: List[Any], candidates: List[str]) -> int:
-    if not headers:
-        return -1
-    hnorm = [_norm_key(h) for h in headers]
-    cand = [_norm_key(c) for c in candidates]
-    for c in cand:
-        if c in hnorm:
-            return hnorm.index(c)
-    for c in cand:
-        for i, hv in enumerate(hnorm):
-            if hv and c and (c in hv or hv in c):
-                return i
-    return -1
-
-
-def _read_individual_rows_for_consolidation(excel_bytes: bytes) -> List[List[Any]]:
-    """
-    Extrai do Excel individual apenas as colunas exigidas para o consolidado:
-    SPIN SELLING | CHECK_01 | CHECK_02 | RESULTADO TEXTO
-    Mantém exatamente o texto já devolvido pelo serviço em RESULTADO TEXTO.
-    """
-    if not excel_bytes:
-        return []
-
-    try:
-        from openpyxl import load_workbook
-    except Exception:
-        return []
-
-    try:
-        wb = load_workbook(io.BytesIO(excel_bytes), data_only=True, read_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows or len(rows) < 2:
-            return []
-
-        headers = list(rows[0])
-
-        i_spin = _find_col_index(headers, ["SPIN SELLING", "SPIN", "Fase", "Fase SPIN", "SPIN Selling"])
-        i_c1 = _find_col_index(headers, ["CHECK_01", "CHECK 01", "CHECK01"])
-        i_c2 = _find_col_index(headers, ["CHECK_02", "CHECK 02", "CHECK02"])
-        i_res = _find_col_index(headers, ["RESULTADO TEXTO", "RESULTADO", "RESULTADO_TEXTO", "RESULTADO TEX", "RESULTADO TEXTUAL"])
-
-        if i_spin < 0 or i_c1 < 0 or i_c2 < 0 or i_res < 0:
-            return []
-
-        out = []
-        for r in rows[1:]:
-            if r is None:
-                continue
-
-            spin = r[i_spin] if i_spin < len(r) else None
-            c1 = r[i_c1] if i_c1 < len(r) else None
-            c2 = r[i_c2] if i_c2 < len(r) else None
-            res = r[i_res] if i_res < len(r) else None
-
-            if spin is None and c1 is None and c2 is None and res is None:
-                continue
-
-            out.append([spin, c1, c2, res])
-
-        return out
-    except Exception:
-        return []
-
-
-def build_consolidated_from_individual_excels(items: List[dict]) -> Tuple[bytes, str]:
-    """
-    Consolida o lote localmente no formato por ligação:
-
-    <nome do arquivo>
-    SPIN SELLING | CHECK_01 | CHECK_02 | RESULTADO TEXTO
-    P0_abertura  | ...      | ...      | IDÊNTICO ou DIFERENTE
-    ...
-    linha em branco
-    """
-    try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment
-    except Exception:
-        return b"", ""
-
-    wb_out = Workbook()
-    ws_out = wb_out.active
-    ws_out.title = "SPIN_RESULTADOS_LOTE"
-
-    header = ["SPIN SELLING", "CHECK_01", "CHECK_02", "RESULTADO TEXTO"]
-
-    bold = Font(bold=True)
-    title_font = Font(bold=True, size=12)
-    left = Alignment(horizontal="left", vertical="top", wrap_text=False)
-
-    def _append_blank():
-        ws_out.append([None, None, None, None])
-
-    for it in items or []:
-        filename = str(it.get("filename") or "").strip()
-        if not filename:
-            filename = "item"
-
-        # Linha de cabeçalho do bloco com o nome do arquivo
-        ws_out.append([Path(filename).stem, None, None, None])
-        ws_out.cell(row=ws_out.max_row, column=1).font = title_font
-        ws_out.cell(row=ws_out.max_row, column=1).alignment = left
-
-        # Cabeçalho da tabela do bloco
-        ws_out.append(header)
-        for c in range(1, 5):
-            cell = ws_out.cell(row=ws_out.max_row, column=c)
-            cell.font = bold
-            cell.alignment = left
-
-        # Linhas de dados do bloco
-        rows = _read_individual_rows_for_consolidation(it.get("excel_individual_bytes", b""))
-        for r in rows:
-            ws_out.append(list(r[:4]) + [None] * max(0, 4 - len(r[:4])))
-            for c in range(1, 5):
-                ws_out.cell(row=ws_out.max_row, column=c).alignment = left
-
-        # Linha em branco entre ligações
-        _append_blank()
-
-    # Se não gerou nada útil, retorna vazio para manter comportamento atual
-    if ws_out.max_row <= 1:
-        return b"", ""
-
-    out = io.BytesIO()
-    wb_out.save(out)
-
-    name = f"SPIN_RESULTADOS_LOTE_LOCAL_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    return out.getvalue(), name
 
 
 # ==============================
@@ -683,11 +536,9 @@ def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
 
     def _score(name: str) -> int:
         n = name.lower()
-        if "spin_resultados_lote" in n:
-            return 0
         if n.endswith("_spin.xlsx") or "_spin" in n:
-            return 1
-        return 2
+            return 0
+        return 1
 
     excels.sort(key=lambda kv: (_score(kv[0]), kv[0]))
     return excels
@@ -948,10 +799,6 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
             return
 
     itens: List[dict] = []
-    # consolidado vindo do serviço (pode estar incompleto)
-    lote_excel_bytes = b""
-    lote_excel_name = ""
-
     total = len(entradas)
 
     for idx, (name, txt) in enumerate(entradas, start=1):
@@ -1001,24 +848,7 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
             }
         )
 
-        # tenta capturar o consolidado do serviço, caso ele venha de forma incremental
-        for nm, xb in excels:
-            if "spin_resultados_lote" in nm.lower():
-                lote_excel_name = nm
-                lote_excel_bytes = format_excel_bytes(xb)
-                break
-
-    # Consolidação local: padrão por ligação, com RESULTADO TEXTO vindo do Excel individual
-    local_bytes, local_name = build_consolidated_from_individual_excels(itens)
-    if local_bytes:
-        lote_excel_bytes = format_excel_bytes(local_bytes)
-        lote_excel_name = local_name
-
     st.session_state["batch_results"] = itens
-    st.session_state["batch_lote"] = {
-        "excel_name": lote_excel_name,
-        "excel_bytes": lote_excel_bytes,
-    } if lote_excel_bytes else None
 
 
 def run_batch_audio(wavs: List[Any]):
@@ -1041,8 +871,6 @@ def run_batch_audio(wavs: List[Any]):
         prepared.append((filename, wav_bytes))
 
     itens: List[dict] = []
-    lote_excel_bytes = b""
-    lote_excel_name = ""
     total = len(prepared)
 
     for idx, (filename, wav_bytes) in enumerate(prepared, start=1):
@@ -1089,23 +917,7 @@ def run_batch_audio(wavs: List[Any]):
             }
         )
 
-        for nm, xb in excels:
-            if "spin_resultados_lote" in nm.lower():
-                lote_excel_name = nm
-                lote_excel_bytes = format_excel_bytes(xb)
-                break
-
-    # Consolidação local: padrão por ligação, com RESULTADO TEXTO vindo do Excel individual
-    local_bytes, local_name = build_consolidated_from_individual_excels(itens)
-    if local_bytes:
-        lote_excel_bytes = format_excel_bytes(local_bytes)
-        lote_excel_name = local_name
-
     st.session_state["batch_results"] = itens
-    st.session_state["batch_lote"] = {
-        "excel_name": lote_excel_name,
-        "excel_bytes": lote_excel_bytes,
-    } if lote_excel_bytes else None
 
 
 # ==============================
@@ -1301,7 +1113,7 @@ else:
         )
 
         st.markdown(
-            "<div class='hint'>O consolidado será exibido como destaque ao final do processamento.</div>",
+            "<div class='hint'>As planilhas individuais serão exibidas abaixo, prontas para leitura e download.</div>",
             unsafe_allow_html=True,
         )
 
@@ -1395,67 +1207,43 @@ if lr and lr.get("excel_bytes"):
 # Resultado gerencial
 # ==============================
 br = st.session_state.get("batch_results")
-batch_lote = st.session_state.get("batch_lote")
 
 if br:
     st.markdown("---")
 
     render_hero(
         title="Resultados do lote",
-        subtitle="O consolidado é o destaque e fica aberto para leitura imediata. As planilhas individuais permanecem disponíveis para download.",
+        subtitle="As planilhas individuais já estão abertas abaixo. Use os downloads para auditoria e compartilhamento.",
         pills=[
-            "<span class='pill ok'><span class='dot'></span>Consolidado em destaque</span>",
-            "<span class='pill'><span class='dot'></span>Individuais para download</span>",
+            "<span class='pill ok'><span class='dot'></span>Planilhas abertas</span>",
+            "<span class='pill'><span class='dot'></span>Downloads individuais</span>",
         ],
-        icon="📊",
+        icon="📁",
     )
-
-    if batch_lote and batch_lote.get("excel_bytes"):
-        render_excel_open(
-            excel_bytes=batch_lote["excel_bytes"],
-            title="Planilha consolidada",
-            subtitle="Visualização ampla e legível para análise do lote, sem excesso de linhas em branco.",
-        )
-
-        st.markdown(
-            """
-<div class="card">
-  <div class="section-title">Download do consolidado</div>
-  <div class="smallmuted">Baixe a planilha do lote para registro e acompanhamento.</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-        st.download_button(
-            "Baixar planilha do lote",
-            data=batch_lote["excel_bytes"],
-            file_name=f"lote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="dl_lote",
-        )
-    else:
-        st.warning("O consolidado não ficou disponível neste retorno. As planilhas individuais continuam acessíveis.")
 
     st.markdown(
         """
 <div class="card">
   <div class="section-title">Planilhas individuais</div>
-  <div class="smallmuted">Use quando precisar auditar um item específico do lote.</div>
+  <div class="smallmuted">Abra, confira e faça o download de cada item no mesmo local.</div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
     for item in br:
-        idx = item.get("idx", 0)
+        idx = int(item.get("idx", 0) or 0)
         filename = str(item.get("filename") or f"item_{idx}")
         base = Path(filename).stem
 
-        with st.expander(f"{idx}. {filename}", expanded=False):
+        with st.expander(f"{idx}. {filename}", expanded=True):
             xb = item.get("excel_individual_bytes", b"")
             if xb:
+                render_excel_open(
+                    excel_bytes=xb,
+                    title="Planilha aberta",
+                    subtitle="Visualização ampla e legível, com rolagem horizontal e vertical.",
+                )
                 st.download_button(
                     "Baixar planilha individual",
                     data=xb,
