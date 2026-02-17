@@ -18,7 +18,7 @@ import wave
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any
 
 import streamlit as st
 import requests
@@ -91,14 +91,12 @@ st.markdown(
   --line:rgba(199,214,245,0.95);
   --line2:rgba(199,214,245,0.70);
   --brand:#0B63F3;
-  --brand2:#164DD6;
   --success:#29B37C;
   --soft:#F6F9FF;
 }
 
 body { background:var(--bg); color:var(--ink); font-family:Segoe UI, Arial, sans-serif; }
 .block-container { padding-top: 1.1rem; padding-bottom: 2.0rem; max-width: 1500px; }
-h1,h2,h3 { color:var(--brand); letter-spacing:0.2px; }
 
 hr { border-color: var(--line2); }
 
@@ -110,7 +108,6 @@ hr { border-color: var(--line2); }
   margin-bottom:14px;
   box-shadow:0 10px 28px rgba(11,18,32,0.08);
 }
-
 .card.tight{ padding:14px 16px; }
 
 .smallmuted{ color:var(--muted); font-weight:650; }
@@ -120,7 +117,7 @@ hr { border-color: var(--line2); }
   display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
   padding:18px; border-radius:22px;
   border:1px solid rgba(199,214,245,0.85);
-  background:linear-gradient(135deg, rgba(246,249,255,1) 0%, rgba(255,255,255,1) 55%, rgba(230,255,243,0.50) 100%);
+  background:linear-gradient(135deg, rgba(246,249,255,1) 0%, rgba(255,255,255,1) 55%, rgba(230,255,243,0.45) 100%);
   box-shadow:0 14px 34px rgba(11,18,32,0.10);
   margin-top:6px; margin-bottom:14px;
 }
@@ -131,7 +128,7 @@ hr { border-color: var(--line2); }
   display:flex; align-items:center; justify-content:center; font-size:22px;
 }
 .hero .title{ margin:0; font-size:1.45rem; font-weight:900; color:var(--ink); }
-.hero .subtitle{ margin:6px 0 0 0; color:var(--muted); font-weight:650; max-width: 840px; }
+.hero .subtitle{ margin:6px 0 0 0; color:var(--muted); font-weight:650; max-width: 900px; }
 
 .pill-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end; }
 .pill{
@@ -161,14 +158,21 @@ hr { border-color: var(--line2); }
   color:var(--ink);
 }
 
-.kpi{
-  display:flex; align-items:center; justify-content:space-between; gap:14px;
-  padding:12px 14px; border-radius:16px;
-  border:1px solid var(--line);
-  background:#FFFFFF;
+.kpi-grid{
+  display:flex;
+  gap:14px;
+  margin: 10px 0 16px 0;
 }
-.kpi .k{ color:var(--muted); font-weight:750; }
-.kpi .v{ color:var(--ink); font-weight:950; }
+.kpi{
+  flex:1;
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:14px 16px;
+  background:#FFFFFF;
+  box-shadow:0 10px 24px rgba(11,18,32,0.06);
+}
+.kpi .k{ color:var(--muted); font-weight:750; margin:0 0 8px 0; }
+.kpi .v{ color:var(--ink); font-weight:950; font-size:1.10rem; margin:0; }
 
 .table-shell{
   border:1px solid var(--line);
@@ -187,9 +191,7 @@ hr { border-color: var(--line2); }
   font-weight:650;
 }
 
-button[kind="primary"]{
-  border-radius:14px !important;
-}
+button[kind="primary"]{ border-radius:14px !important; }
 
 [data-testid="stDownloadButton"] button{
   border-radius:14px !important;
@@ -207,6 +209,10 @@ button[kind="primary"]{
   border-radius:14px;
 }
 
+/* Mais respiro no layout geral */
+div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stHorizontalBlock"]) {
+  margin-bottom: 0.35rem;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -333,27 +339,50 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
 
 
 # ==============================
-# 📊 Excel: leitura para visualização
+# 📊 Excel: leitura e limpeza para visualização
 # ==============================
+def _drop_trailing_blank_rows_df(df, lookback: int = 1200):
+    """
+    Remove linhas em branco no final do DataFrame, mantendo o conteúdo real.
+    Mantém performance ao olhar apenas um recorte do final.
+    """
+    try:
+        if df is None or df.empty:
+            return df
+
+        n = len(df)
+        start = max(0, n - lookback)
+        tail = df.iloc[start:].copy()
+
+        non_empty = tail.notna() & (tail.astype(str).fillna("").applymap(lambda x: str(x).strip() != ""))
+        row_has_value = non_empty.any(axis=1)
+
+        if not row_has_value.any():
+            return df.iloc[:0].copy()
+
+        last_valid_pos_in_tail = row_has_value[row_has_value].index[-1]
+        last_idx = df.index.get_loc(last_valid_pos_in_tail)
+        return df.iloc[: last_idx + 1].copy()
+    except Exception:
+        return df
+
+
 def _excel_to_dataframe(excel_bytes: bytes):
     if not excel_bytes:
         return None
 
     bio = io.BytesIO(excel_bytes)
 
-    # Preferência: pandas, por ser mais estável para leitura rápida
     try:
         import pandas as pd
         df = pd.read_excel(bio, sheet_name=0, engine="openpyxl")
         if df is None:
             return None
-        # Garante colunas como texto para melhor leitura na tabela
         df.columns = [str(c) for c in df.columns]
         return df
     except Exception:
         pass
 
-    # Fallback: openpyxl sem pandas
     try:
         from openpyxl import load_workbook
         wb = load_workbook(bio, data_only=True, read_only=True)
@@ -363,17 +392,12 @@ def _excel_to_dataframe(excel_bytes: bytes):
             return None
         headers = [str(h) if h is not None else "" for h in rows[0]]
         data = rows[1:]
-        # Evita depender de pandas, devolve estrutura simples
         return {"headers": headers, "data": data}
     except Exception:
         return None
 
 
-def _infer_column_config_from_df(df, sample_rows: int = 180):
-    """
-    Heurísticas simples para dar prioridade de largura a colunas de texto.
-    Mantém consistência sem dependências externas.
-    """
+def _infer_column_config_from_df(df, sample_rows: int = 220):
     col_cfg = {}
     if df is None or not hasattr(df, "columns"):
         return col_cfg
@@ -390,7 +414,6 @@ def _infer_column_config_from_df(df, sample_rows: int = 180):
         c_str = str(c)
         c_low = c_str.lower()
 
-        # Medida simples de tamanho com base no cabeçalho e amostra
         try:
             vals = sample[c].astype(str).fillna("").tolist()
             max_len = max([len(c_str)] + [len(v) for v in vals[:sample_rows]])
@@ -403,9 +426,7 @@ def _infer_column_config_from_df(df, sample_rows: int = 180):
 
         if is_long:
             col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="large")
-        elif is_id:
-            col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="small")
-        elif is_short:
+        elif is_id or is_short:
             col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="small")
         else:
             col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="medium")
@@ -413,7 +434,22 @@ def _infer_column_config_from_df(df, sample_rows: int = 180):
     return col_cfg
 
 
-def render_excel_open(excel_bytes: bytes, title: str, subtitle: str, height: int = 620):
+def _suggest_table_height(rows: int, min_h: int = 520, max_h: int = 820):
+    """
+    Altura mais correta para exibir a quantidade real de linhas sem ficar apertado.
+    """
+    try:
+        r = int(rows)
+    except Exception:
+        r = 0
+    if r <= 0:
+        return min_h
+    # Aproximação conservadora de linha, para dar mais conforto visual
+    h = int(120 + r * 28)
+    return max(min_h, min(max_h, h))
+
+
+def render_excel_open(excel_bytes: bytes, title: str, subtitle: str):
     st.markdown(
         f"""
 <div class="card">
@@ -428,8 +464,8 @@ def render_excel_open(excel_bytes: bytes, title: str, subtitle: str, height: int
 
     # Fallback sem pandas
     if isinstance(df_or, dict) and "headers" in df_or:
-        headers = df_or["headers"]
         data = df_or["data"]
+        height = _suggest_table_height(len(data))
         st.markdown("<div class='table-shell'>", unsafe_allow_html=True)
         st.dataframe(
             data,
@@ -444,18 +480,33 @@ def render_excel_open(excel_bytes: bytes, title: str, subtitle: str, height: int
         st.info("Não foi possível abrir a planilha para visualização. O download continua disponível.")
         return
 
-    # Ajustes de leitura
+    # Limpeza: remove colunas e linhas finais vazias que poluem a leitura
     try:
         df = df.copy()
         df.columns = [str(c) for c in df.columns]
-        # Evita colunas totalmente vazias no final, quando existir
+
         empty_cols = [c for c in df.columns if df[c].isna().all()]
         if empty_cols and len(empty_cols) < len(df.columns):
             df = df.drop(columns=empty_cols)
+
+        df = _drop_trailing_blank_rows_df(df, lookback=1600)
     except Exception:
         pass
 
+    rows = int(len(df)) if df is not None else 0
+    height = _suggest_table_height(rows)
+
     col_cfg = _infer_column_config_from_df(df)
+
+    # Informações discretas de leitura
+    st.markdown(
+        f"""
+<div class="smallmuted" style="margin: 8px 0 10px 2px;">
+Linhas exibidas <b>{rows}</b>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
     st.markdown("<div class='table-shell'>", unsafe_allow_html=True)
     st.dataframe(
@@ -544,10 +595,6 @@ def show_friendly_error(title: str, err: Exception):
 # ⏳ Progresso e tempo que atualizam
 # ==============================
 def run_with_live_progress(task_fn, phase_labels: List[str]):
-    """
-    task_fn: função sem streamlit que executa e retorna resultado
-    phase_labels: mensagens curtas para o cliente
-    """
     status = st.empty()
     timer = st.empty()
     pbar = st.progress(0)
@@ -568,8 +615,6 @@ def run_with_live_progress(task_fn, phase_labels: List[str]):
     th = threading.Thread(target=_worker, daemon=True)
     th.start()
 
-    # Progresso indeterminado mais estável e um pouco mais lento
-    # Sobe até 30, depois avança gradualmente até 90 enquanto aguarda
     phase = 0
     last_phase_change = 0.0
 
@@ -597,14 +642,12 @@ def run_with_live_progress(task_fn, phase_labels: List[str]):
         )
 
         if elapsed < 10:
-            prog = int(4 + (elapsed / 10) * 26)  # 4..30
+            prog = int(4 + (elapsed / 10) * 26)
         else:
-            # aproxima de 90 sem travar e com avanço mais suave
-            prog = int(30 + (1 - (1 / (1 + (elapsed - 10) / 11))) * 60)  # 30..90
+            prog = int(30 + (1 - (1 / (1 + (elapsed - 10) / 11))) * 60)
 
         prog = max(0, min(90, prog))
         pbar.progress(prog)
-
         time.sleep(0.22)
 
     elapsed = time.time() - start
@@ -1144,33 +1187,35 @@ if lr and lr.get("excel_bytes"):
         icon="✅",
     )
 
-    # KPIs discretos
     t = (lr.get("timings") or {})
     total_sec = float(t.get("total_sec") or 0.0)
     audio_sec = float(t.get("audio_sec") or 0.0)
-    k1, k2, k3 = st.columns(3)
-    with k1:
-        st.markdown(
-            f"<div class='kpi'><div class='k'>Tempo total</div><div class='v'>{human_time(total_sec)}</div></div>",
-            unsafe_allow_html=True,
-        )
-    with k2:
-        st.markdown(
-            f"<div class='kpi'><div class='k'>Duração do áudio</div><div class='v'>{human_time(audio_sec) if audio_sec else '—'}</div></div>",
-            unsafe_allow_html=True,
-        )
-    with k3:
-        st.markdown(
-            f"<div class='kpi'><div class='k'>Arquivo</div><div class='v'>{Path(lr.get('filename') or '').name or '—'}</div></div>",
-            unsafe_allow_html=True,
-        )
+    arquivo = Path(lr.get("filename") or "").name or "—"
 
-    # Planilha aberta na tela
+    st.markdown(
+        f"""
+<div class="kpi-grid">
+  <div class="kpi">
+    <p class="k">Tempo total</p>
+    <p class="v">{human_time(total_sec)}</p>
+  </div>
+  <div class="kpi">
+    <p class="k">Duração do áudio</p>
+    <p class="v">{human_time(audio_sec) if audio_sec else "—"}</p>
+  </div>
+  <div class="kpi">
+    <p class="k">Arquivo</p>
+    <p class="v">{arquivo}</p>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
     render_excel_open(
         excel_bytes=lr.get("excel_bytes", b""),
         title="Planilha aberta",
-        subtitle="Visualização executiva com rolagem horizontal e vertical e prioridade para colunas de texto.",
-        height=650,
+        subtitle="Visualização ampla com rolagem horizontal e vertical, com limpeza de linhas em branco ao final.",
     )
 
     st.markdown(
@@ -1216,12 +1261,10 @@ if br:
     )
 
     if batch_lote and batch_lote.get("excel_bytes"):
-        # Planilha do lote aberta primeiro
         render_excel_open(
             excel_bytes=batch_lote["excel_bytes"],
             title="Planilha consolidada",
-            subtitle="Visualização ampla e legível para análise do lote.",
-            height=680,
+            subtitle="Visualização ampla e legível para análise do lote, sem excesso de linhas em branco.",
         )
 
         st.markdown(
@@ -1280,6 +1323,6 @@ if br:
 # ==============================
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026 - Desenvolvido Por Pualo Coutinho</div>",
+    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026 - Desenvolvido Por Paulo Coutinho</div>",
     unsafe_allow_html=True,
 )
