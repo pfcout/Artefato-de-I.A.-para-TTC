@@ -338,7 +338,7 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
 
 
 # ==============================
-# 📌 Consolidado: escolher o melhor ao longo do lote
+# 📌 Consolidado: construir localmente a partir das planilhas individuais
 # ==============================
 def _excel_row_count(excel_bytes: bytes) -> int:
     if not excel_bytes:
@@ -347,36 +347,88 @@ def _excel_row_count(excel_bytes: bytes) -> int:
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(excel_bytes), read_only=True, data_only=True)
         ws = wb.active
-        # max_row é rápido e suficiente para comparar
         return int(ws.max_row or 0)
     except Exception:
         return 0
 
 
-def _keep_best_consolidated(best_name: str, best_bytes: bytes, cand_name: str, cand_bytes: bytes) -> Tuple[str, bytes]:
+def _sheet_to_matrix(ws):
+    rows = []
+    for r in ws.iter_rows(values_only=True):
+        rows.append(list(r))
+    return rows
+
+
+def _normalize_header_row(row):
+    return [("" if v is None else str(v).strip()) for v in (row or [])]
+
+
+def build_consolidated_from_individual_excels(items: List[dict]) -> Tuple[bytes, str]:
     """
-    Mantém o consolidado mais completo.
-    Critério principal: maior número de linhas.
-    Desempate: maior tamanho em bytes.
+    Consolida o lote unindo as linhas das planilhas individuais:
+    - Cabeçalho vem da primeira planilha válida
+    - Demais linhas são anexadas (row2..fim) de cada planilha
+    - Se houver divergência de colunas, alinha pelo cabeçalho
     """
-    if not cand_bytes:
-        return best_name, best_bytes
-    if not best_bytes:
-        return cand_name, cand_bytes
+    try:
+        from openpyxl import load_workbook, Workbook
+    except Exception:
+        return b"", ""
 
-    best_rows = _excel_row_count(best_bytes)
-    cand_rows = _excel_row_count(cand_bytes)
+    header = None
+    out_rows = []
 
-    if cand_rows > best_rows:
-        return cand_name, cand_bytes
-    if cand_rows < best_rows:
-        return best_name, best_bytes
+    for it in items:
+        xb = it.get("excel_individual_bytes", b"")
+        if not xb:
+            continue
 
-    # desempate por tamanho
-    if len(cand_bytes) > len(best_bytes):
-        return cand_name, cand_bytes
+        try:
+            wb = load_workbook(io.BytesIO(xb), data_only=True, read_only=True)
+            ws = wb.active
+            mat = _sheet_to_matrix(ws)
+            if not mat or len(mat) < 2:
+                continue
 
-    return best_name, best_bytes
+            h = _normalize_header_row(mat[0])
+            if header is None:
+                header = h
+
+            if header and h and header != h:
+                idx_map = {str(col).strip(): i for i, col in enumerate(h)}
+                for data_row in mat[1:]:
+                    new_row = []
+                    for col_name in header:
+                        j = idx_map.get(col_name, None)
+                        new_row.append(data_row[j] if (j is not None and j < len(data_row)) else None)
+                    out_rows.append(new_row)
+            else:
+                out_rows.extend(mat[1:])
+
+        except Exception:
+            continue
+
+    if header is None:
+        return b"", ""
+
+    cleaned = []
+    for r in out_rows:
+        if any((v is not None and str(v).strip() != "") for v in (r or [])):
+            cleaned.append(r)
+
+    wb_out = Workbook()
+    ws_out = wb_out.active
+    ws_out.title = "SPIN_RESULTADOS_LOTE"
+
+    ws_out.append(header)
+    for r in cleaned:
+        ws_out.append(r)
+
+    out = io.BytesIO()
+    wb_out.save(out)
+
+    name = f"SPIN_RESULTADOS_LOTE_LOCAL_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return out.getvalue(), name
 
 
 # ==============================
@@ -779,7 +831,6 @@ def run_single_audio(wav_file):
         return
 
     def task():
-        # Importante: apenas bytes e nome em string na thread
         return vps_run_file_blocking(wav_bytes, filename, "audio/wav")
 
     try:
@@ -847,6 +898,7 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
             return
 
     itens: List[dict] = []
+    # consolidado vindo do serviço (pode estar incompleto)
     lote_excel_bytes = b""
     lote_excel_name = ""
 
@@ -899,14 +951,18 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
             }
         )
 
+        # tenta capturar o consolidado do serviço, caso ele venha de forma incremental
         for nm, xb in excels:
             if "spin_resultados_lote" in nm.lower():
-                cand_name = nm
-                cand_bytes = format_excel_bytes(xb)
-                lote_excel_name, lote_excel_bytes = _keep_best_consolidated(
-                    lote_excel_name, lote_excel_bytes, cand_name, cand_bytes
-                )
+                lote_excel_name = nm
+                lote_excel_bytes = format_excel_bytes(xb)
                 break
+
+    # Consolidação local: garante que o lote tenha todas as linhas (corrige “só 1 linha”)
+    local_bytes, local_name = build_consolidated_from_individual_excels(itens)
+    if local_bytes:
+        lote_excel_bytes = format_excel_bytes(local_bytes)
+        lote_excel_name = local_name
 
     st.session_state["batch_results"] = itens
     st.session_state["batch_lote"] = {
@@ -924,8 +980,7 @@ def run_batch_audio(wavs: List[Any]):
         st.error(f"No gerencial, envie até {BATCH_WAV_MAX_FILES} áudios por vez.")
         return
 
-    # Validação fora da thread
-    prepared: List[Tuple[str, bytes, float]] = []
+    prepared: List[Tuple[str, bytes]] = []
     for wf in wavs:
         wav_bytes = wf.getbuffer().tobytes()
         filename = str(wf.name)
@@ -933,16 +988,15 @@ def run_batch_audio(wavs: List[Any]):
         if d and d > BATCH_WAV_MAX_SECONDS_EACH:
             st.error(f"{filename} tem cerca de {d/60:.1f} minutos. No gerencial, use até 10 minutos por áudio.")
             return
-        prepared.append((filename, wav_bytes, float(d or 0.0)))
+        prepared.append((filename, wav_bytes))
 
     itens: List[dict] = []
     lote_excel_bytes = b""
     lote_excel_name = ""
     total = len(prepared)
 
-    for idx, (filename, wav_bytes, _dur) in enumerate(prepared, start=1):
+    for idx, (filename, wav_bytes) in enumerate(prepared, start=1):
         def task():
-            # Importante: apenas bytes e nome em string na thread
             return vps_run_file_blocking(wav_bytes, filename, "audio/wav")
 
         try:
@@ -987,12 +1041,15 @@ def run_batch_audio(wavs: List[Any]):
 
         for nm, xb in excels:
             if "spin_resultados_lote" in nm.lower():
-                cand_name = nm
-                cand_bytes = format_excel_bytes(xb)
-                lote_excel_name, lote_excel_bytes = _keep_best_consolidated(
-                    lote_excel_name, lote_excel_bytes, cand_name, cand_bytes
-                )
+                lote_excel_name = nm
+                lote_excel_bytes = format_excel_bytes(xb)
                 break
+
+    # Consolidação local: garante que o lote tenha todas as linhas (corrige “só 1 linha”)
+    local_bytes, local_name = build_consolidated_from_individual_excels(itens)
+    if local_bytes:
+        lote_excel_bytes = format_excel_bytes(local_bytes)
+        lote_excel_name = local_name
 
     st.session_state["batch_results"] = itens
     st.session_state["batch_lote"] = {
