@@ -978,9 +978,9 @@ if st.session_state["view"] == "single":
 
     if st.session_state["single_mode"] == "Texto":
         st.markdown(
-            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
+            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b> para melhor precisão.</div>",
             unsafe_allow_html=True,
-        
+        )
 
         content = st.text_area(
             "Conteúdo para avaliação",
@@ -1052,7 +1052,7 @@ else:
         )
 
         st.markdown(
-            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b> para melhor precisão.</div>",
+            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
             unsafe_allow_html=True,
         )
 
@@ -1280,6 +1280,6 @@ if br:
 # ==============================
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026 - Desenvolvido por Paulo Coutinho</div>",
+    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026 - Desenvolvido Por Pualo Coutinho</div>",
     unsafe_allow_html=True,
 )
