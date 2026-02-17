@@ -77,11 +77,12 @@ if not API_KEY:
 
 
 # ==============================
-# 🎨 Estilo (visual limpo e consistente)
+# 🎨 Estilo (DARK compatível + sem branco no Cloud)
 # ==============================
 st.markdown(
     """
 <style>
+/* ===== TOKENS (LIGHT) ===== */
 :root{
   --bg:#F6F8FC;
   --card:#FFFFFF;
@@ -92,15 +93,46 @@ st.markdown(
   --ok:#17B26A;
   --warn:#F79009;
   --shadow: 0 10px 30px rgba(11,18,32,0.08);
+
+  --widget-bg: rgba(255,255,255,0.92);
+  --widget-bg-2: rgba(255,255,255,0.80);
 }
+
+/* ===== TOKENS (DARK) ===== */
+html[data-theme="dark"]{
+  --bg:#0B0F19;
+  --card:#111827;
+  --text:#E8EEF9;
+  --muted:#A9B6CC;
+  --line: rgba(148,163,184,0.18);
+  --shadow: 0 10px 30px rgba(0,0,0,0.45);
+
+  --widget-bg: rgba(17,24,39,0.92);
+  --widget-bg-2: rgba(17,24,39,0.78);
+}
+
 html, body, [data-testid="stAppViewContainer"]{
   background: var(--bg) !important;
   color: var(--text) !important;
   font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
 }
+
+section.main, .block-container,
+header[data-testid="stHeader"]{
+  background: transparent !important;
+}
+
 h1,h2,h3{ color: var(--text) !important; letter-spacing:-0.2px; }
 hr{ border-color: var(--line) !important; }
 .block-container{ padding-top: 1.25rem; padding-bottom: 2.5rem; }
+
+/* Sidebar */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div:first-child{
+  background: transparent !important;
+}
+
+/* Cards */
 .card{
   background: var(--card) !important;
   border: 1px solid var(--line) !important;
@@ -117,21 +149,23 @@ hr{ border-color: var(--line) !important; }
 }
 .kicker{
   font-size: 0.9rem;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--muted);
   margin: 0 0 6px 0;
 }
 .title{
   margin: 0;
   font-size: 1.15rem;
-  font-weight: 800;
+  font-weight: 900;
   color: var(--text);
 }
 .muted{
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 650;
   margin: 8px 0 0 0;
 }
+
+/* Badges (sem hardcode claro) */
 .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
 .badge{
   display:inline-flex;
@@ -140,24 +174,99 @@ hr{ border-color: var(--line) !important; }
   padding:6px 10px;
   border-radius:999px;
   border:1px solid var(--line);
-  background:#FAFBFF;
+  background: var(--widget-bg-2) !important;
   color: var(--muted);
   font-weight:800;
   font-size: 0.9rem;
 }
 .badge-ok{
   border-color: rgba(23,178,106,0.25);
-  background: rgba(23,178,106,0.10);
-  color: #08603B;
+  background: rgba(23,178,106,0.10) !important;
+  color: #0D7A4B !important;
 }
+html[data-theme="dark"] .badge-ok{ color: #7FF2B0 !important; }
 .badge-brand{
   border-color: rgba(11,99,243,0.25);
-  background: rgba(11,99,243,0.08);
-  color: #0B63F3;
+  background: rgba(11,99,243,0.10) !important;
+  color: var(--brand) !important;
 }
 .smallline{ font-size:0.95rem; color: var(--muted); font-weight: 650; }
+
+/* Widgets (BaseWeb) */
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea,
+[data-baseweb="select"] div{
+  background: var(--widget-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+  border-radius: 14px !important;
+}
+[data-baseweb="textarea"] textarea::placeholder,
+[data-baseweb="input"] input::placeholder{
+  color: rgba(169,182,204,0.85) !important;
+}
+html[data-theme="light"] [data-baseweb="textarea"] textarea::placeholder,
+html[data-theme="light"] [data-baseweb="input"] input::placeholder{
+  color: rgba(75,90,116,0.65) !important;
+}
+
+/* File uploader */
+section[data-testid="stFileUploader"] > div{
+  background: var(--widget-bg) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px !important;
+}
+
+/* Buttons + Download */
+[data-testid="stButton"] button,
+[data-testid="stDownloadButton"] button{
+  border-radius: 14px !important;
+  border: 1px solid var(--line) !important;
+}
+[data-testid="stDownloadButton"] button{
+  background: var(--card) !important;
+  color: var(--text) !important;
+}
+
+/* Expander (sem branco) */
+[data-testid="stExpander"] details{
+  background: var(--card) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow);
+}
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] div{
+  background: transparent !important;
+}
+
+/* DataFrame (principal fonte de branco no Dark) */
+[data-testid="stDataFrame"]{ background: transparent !important; }
+[data-testid="stDataFrame"] > div{
+  background: var(--card) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow);
+  overflow: hidden !important;
+}
+
+/* Internals (BaseWeb table / grid) */
+[data-testid="stDataFrame"] [data-baseweb="table"],
+[data-testid="stDataFrame"] [role="grid"],
+[data-testid="stDataFrame"] table,
+[data-testid="stDataFrame"] thead,
+[data-testid="stDataFrame"] tbody,
+[data-testid="stDataFrame"] tr,
+[data-testid="stDataFrame"] th,
+[data-testid="stDataFrame"] td{
+  background: transparent !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+
+/* Polimento */
 .stProgress > div > div > div > div{ border-radius: 999px !important; }
-div[data-testid="stAlert"]{ border-radius: 14px !important; }
+div[data-testid="stAlert"]{ border-radius: 14px !important; border-color: var(--line) !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -184,32 +293,11 @@ def _ensure_state():
     ss.setdefault("ema_wav_sec", None)
     ss.setdefault("ema_batch_item_sec", None)
 
-    # Guard de execução (leve): para detectar “estava rodando mas caiu”
+    # Guard de execução (leve): usado apenas durante processamento
     ss.setdefault("run_token", "")
     ss.setdefault("run_started_at", 0.0)
 
 _ensure_state()
-
-
-# ==============================
-# 🧯 Watchdog: se “ficou rodando” mas foi interrompido
-# ==============================
-RUN_STALE_WARN_SEC = 4 * 60  # 4 minutos (ajuste seguro)
-
-def _watchdog_ui():
-    ss = st.session_state
-    if ss.get("processing") and ss.get("run_started_at"):
-        elapsed = time.time() - float(ss["run_started_at"])
-        if elapsed > RUN_STALE_WARN_SEC:
-            ss["processing"] = False
-            ss["run_token"] = ""
-            ss["run_started_at"] = 0.0
-            st.warning(
-                "Parece que a execução foi interrompida antes de concluir (por exemplo, queda de conexão). "
-                "Você pode iniciar novamente."
-            )
-
-_watchdog_ui()
 
 
 # ==============================
@@ -913,13 +1001,23 @@ with st.sidebar:
 
     nav_disabled = st.session_state.get("processing", False)
 
-    if st.button("👤 Avaliação Individual", use_container_width=True, disabled=nav_disabled):
+    if st.button(
+        "👤 Avaliação Individual",
+        use_container_width=True,
+        disabled=nav_disabled,
+        key="btn_nav_single",
+    ):
         if st.session_state["view"] != "single":
             clear_batch()
         st.session_state["view"] = "single"
         st.rerun()
 
-    if st.button("📊 Visão Gerencial", use_container_width=True, disabled=nav_disabled):
+    if st.button(
+        "📊 Visão Gerencial",
+        use_container_width=True,
+        disabled=nav_disabled,
+        key="btn_nav_batch",
+    ):
         if st.session_state["view"] != "batch":
             clear_single()
         st.session_state["view"] = "batch"
@@ -934,7 +1032,12 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if st.button("🧹 Limpar resultados", use_container_width=True, disabled=nav_disabled):
+    if st.button(
+        "🧹 Limpar resultados",
+        use_container_width=True,
+        disabled=nav_disabled,
+        key="btn_clear_all",
+    ):
         clear_all()
         st.rerun()
 
@@ -983,11 +1086,21 @@ if st.session_state["view"] == "single":
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Iniciar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "✅ Iniciar",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_single_start",
+            ):
                 clear_single()
                 run_single_txt(txt_input)
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "🧹 Limpar",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_single_clear_txt",
+            ):
                 clear_single()
                 st.rerun()
 
@@ -1002,14 +1115,24 @@ if st.session_state["view"] == "single":
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Iniciar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "✅ Iniciar",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_single_start_wav",
+            ):
                 if up_wav is None:
                     st.warning("Envie um arquivo WAV para continuar.")
                 else:
                     clear_single()
                     run_single_wav(up_wav)
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "🧹 Limpar",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_single_clear_wav",
+            ):
                 clear_single()
                 st.rerun()
 
@@ -1058,7 +1181,10 @@ else:
             disabled=st.session_state.get("processing", False),
         )
 
-        st.markdown("<div class='smallline'>Ou cole vários blocos (separe com uma linha contendo <b>---</b>).</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='smallline'>Ou cole vários blocos (separe com uma linha contendo <b>---</b>).</div>",
+            unsafe_allow_html=True
+        )
         multi_txt = st.text_area(
             "Cole aqui",
             height=220,
@@ -1070,14 +1196,24 @@ else:
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Iniciar lote", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "✅ Iniciar lote",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_batch_start_txt",
+            ):
                 blocks = []
                 if multi_txt.strip():
                     blocks = [b.strip() for b in multi_txt.split("\n---\n") if b.strip()]
                 clear_batch()
                 run_batch_txt(up_txts or [], blocks)
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "🧹 Limpar",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_batch_clear_txt",
+            ):
                 clear_batch()
                 st.rerun()
 
@@ -1092,11 +1228,21 @@ else:
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Iniciar lote", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "✅ Iniciar lote",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_batch_start_wav",
+            ):
                 clear_batch()
                 run_batch_wav(up_wavs or [])
         with c2:
-            if st.button("🧹 Limpar", use_container_width=True, disabled=st.session_state.get("processing", False)):
+            if st.button(
+                "🧹 Limpar",
+                use_container_width=True,
+                disabled=st.session_state.get("processing", False),
+                key="btn_batch_clear_wav",
+            ):
                 clear_batch()
                 st.rerun()
 
@@ -1135,7 +1281,10 @@ if single_payload and single_payload.get("type") == "single":
 
     df = single_payload.get("df", pd.DataFrame())
     st.markdown("")
-    st.markdown("<div class='card-tight'><div class='title'>📊 Visualização</div><p class='muted'>Abaixo está a planilha aberta para consulta rápida.</p></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card-tight'><div class='title'>📊 Visualização</div><p class='muted'>Abaixo está a planilha aberta para consulta rápida.</p></div>",
+        unsafe_allow_html=True
+    )
     st.dataframe(df, use_container_width=True)
 
     timings = single_payload.get("timings", {}) or {}
@@ -1201,10 +1350,13 @@ if batch_payload and batch_payload.get("type") == "batch":
     lote_bytes = lote.get("excel_bytes", b"")
 
     if isinstance(lote_df, pd.DataFrame) and not lote_df.empty:
-        st.markdown("<div class='card-tight'><div class='title'>📊 Planilha do lote (aberta)</div></div>", unsafe_allow_html=True)
+        st.markdown("<div class='card-tight'><div class='title'>📊 Consolidado do lote</div></div>", unsafe_allow_html=True)
         st.dataframe(lote_df, use_container_width=True)
     else:
-        st.markdown("<div class='card-tight'><div class='title'>📊 Planilha do lote</div><p class='muted'>Use o download abaixo para abrir no Excel.</p></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='card-tight'><div class='title'>📊 Consolidado do lote</div><p class='muted'>Use o download abaixo para abrir no Excel.</p></div>",
+            unsafe_allow_html=True
+        )
 
     st.markdown("")
     if lote_bytes:
@@ -1219,7 +1371,10 @@ if batch_payload and batch_payload.get("type") == "batch":
 
     items = batch_payload.get("items", []) or []
     st.markdown("")
-    st.markdown("<div class='card-tight'><div class='title'>📁 Itens</div><p class='muted'>Expanda para baixar a planilha individual.</p></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card-tight'><div class='title'>📁 Itens</div><p class='muted'>Expanda para baixar a planilha individual.</p></div>",
+        unsafe_allow_html=True
+    )
 
     for item in items:
         idx = item.get("idx", 0)
@@ -1246,6 +1401,6 @@ if batch_payload and batch_payload.get("type") == "batch":
 # ==============================
 st.markdown("")
 st.markdown(
-    "<div style='text-align:center;color:#4B5A74;font-weight:650;'>SPIN Analyzer — Projeto Tele_IA 2026</div>",
+    "<div style='text-align:center;color:var(--muted);font-weight:650;'>SPIN Analyzer — Projeto Tele_IA 2026</div>",
     unsafe_allow_html=True,
 )
