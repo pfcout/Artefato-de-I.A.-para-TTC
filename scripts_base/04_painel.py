@@ -978,9 +978,9 @@ if st.session_state["view"] == "single":
 
     if st.session_state["single_mode"] == "Texto":
         st.markdown(
-            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b> para melhor precisão.</div>",
+            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
             unsafe_allow_html=True,
-        )
+        
 
         content = st.text_area(
             "Conteúdo para avaliação",
