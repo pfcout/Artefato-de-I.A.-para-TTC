@@ -1280,6 +1280,6 @@ if br:
 # ==============================
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026</div>",
+    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026 - Desenvolvido por Paulo Coutinho</div>",
     unsafe_allow_html=True,
 )
