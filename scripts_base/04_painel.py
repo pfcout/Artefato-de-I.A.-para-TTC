@@ -1,22 +1,23 @@
 # ===============================================
-# 🎧 SPIN Analyzer — Painel Acadêmico (TXT + WAV)
-# MODO ÚNICO: VPS (Streamlit / Cloud)
-# ✅ Endpoint único: POST {VPS_BASE_URL}/run  (05_api_vps.py)
-# ✅ Individual: retorna apenas Excel principal (sem ZIP / sem logs)
-# ✅ Gerencial (lote): Excel do lote aberto + downloads (Excel lote + Excel por item)
-# ✅ Limpa resultado ao trocar de aba/tela + botão “Limpar”
-# ✅ Barra de progresso + tempo decorrido (estimativa só quando der)
-# ✅ Excel formatado (wrap + largura + freeze)
+# 🎧 SPIN Analyzer — Painel
+# Foco: UX profissional + robustez em Streamlit Cloud
+# - Individual: visualiza a planilha principal + download do Excel
+# - Gerencial (lote): visualiza consolidado + download do Excel do lote + Excel por item
+# - Progresso elegante (sem st.rerun durante processamento, sem alertas por tempo)
+# - Limites do lote:
+#   • Áudio (WAV): até 5 arquivos • até 10 minutos cada
+#   • Texto: até 8 entradas no total (arquivos + blocos colados)
+# - Correção crítica: NÃO persiste bytes grandes em st.session_state
 # ===============================================
 
 import os
 import re
 import io
 import time
-import json
 import zipfile
-import shutil
 import wave
+import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -30,13 +31,14 @@ import requests
 # ⚙️ set_page_config PRIMEIRO
 # ==============================
 st.set_page_config(
-    page_title="SPIN Analyzer — Avaliação de Ligações",
+    page_title="SPIN Analyzer — Avaliação de Conversas",
     page_icon="🎧",
     layout="wide",
 )
 
+
 # ==============================
-# 🔐 Configurações (Secrets/Env)
+# 🔐 Config (Secrets/Env)
 # ==============================
 def _get_cfg(key: str, default: str = "") -> str:
     v = os.getenv(key)
@@ -50,9 +52,9 @@ def _get_cfg(key: str, default: str = "") -> str:
     return str(default).strip()
 
 
-MODE = _get_cfg("MODE", "VPS").upper()
-VPS_BASE_URL = _get_cfg("VPS_BASE_URL", "").rstrip("/")
-VPS_API_KEY = _get_cfg("VPS_API_KEY", "")
+MODE = _get_cfg("MODE", "VPS").upper().strip()
+BASE_URL = _get_cfg("VPS_BASE_URL", "").rstrip("/")
+API_KEY = _get_cfg("VPS_API_KEY", "").strip()
 
 CONNECT_TIMEOUT_S = int(_get_cfg("CONNECT_TIMEOUT_S", "10"))
 READ_TIMEOUT_S = int(_get_cfg("API_TIMEOUT_S", "7200"))
@@ -63,71 +65,124 @@ EXCEL_DEFAULT_COL_W = int(_get_cfg("EXCEL_DEFAULT_COL_W", "22"))
 EXCEL_TEXT_COL_W = int(_get_cfg("EXCEL_TEXT_COL_W", "55"))
 EXCEL_MAX_COL_W = int(_get_cfg("EXCEL_MAX_COL_W", "80"))
 
-if MODE != "VPS":
-    st.error("❌ Este painel funciona apenas em VPS. Ajuste MODE='VPS' nos secrets.")
-    st.stop()
-if not VPS_BASE_URL:
-    st.error("❌ VPS_BASE_URL não configurado (Secrets/Env).")
-    st.stop()
-if not VPS_API_KEY:
-    st.error("❌ VPS_API_KEY não configurado (Secrets/Env).")
-    st.stop()
+# Local-friendly:
+# - MODE=LOCAL permite rodar apontando BASE_URL para um serviço local
+# - API_KEY fica opcional em LOCAL
+if not BASE_URL:
+    if MODE == "LOCAL":
+        BASE_URL = "http://127.0.0.1:8000"
+    else:
+        st.error("Configuração ausente: endereço do serviço.")
+        st.stop()
 
-
-def _pretty_url(u: str) -> str:
-    return (u or "").strip()
+if MODE != "LOCAL" and not API_KEY:
+    st.error("Configuração ausente: chave de acesso.")
+    st.stop()
 
 
 # ==============================
-# 🎨 Estilo profissional (mantido)
+# 🎨 Estilo (visual supremo e consistente)
 # ==============================
 st.markdown(
     """
 <style>
-body {
-  background-color: #FFFFFF;
-  color: #0B1220;
-  font-family: Segoe UI, Arial, sans-serif;
+:root{
+  --bg:#F6F8FC;
+  --card:#FFFFFF;
+  --text:#0B1220;
+  --muted:#4B5A74;
+  --line:#E5ECFA;
+  --brand:#0B63F3;
+  --ok:#17B26A;
+  --warn:#F79009;
+  --shadow: 0 12px 34px rgba(11,18,32,0.08);
 }
-h1, h2, h3 { color: #0B63F3; }
+html, body, [data-testid="stAppViewContainer"]{
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+}
+.block-container{ padding-top: 1.25rem; padding-bottom: 2.5rem; max-width: 1200px; }
+h1,h2,h3{ color: var(--text) !important; letter-spacing:-0.2px; }
+hr{ border-color: var(--line) !important; }
 
 .card{
-  background: #FFFFFF !important;
-  color: #0B1220 !important;
-  border: 1px solid #C7D6F5 !important;
+  background: var(--card) !important;
+  border: 1px solid var(--line) !important;
   border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 14px;
-  box-shadow: 0 8px 24px rgba(11,18,32,0.08);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
 }
-.card *{ color: #0B1220 !important; }
-
-.badge{
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #AFC7F3 !important;
-  background: #F6F9FF !important;
-  color: #0B63F3 !important;
+.card-tight{
+  background: var(--card) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.kicker{
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--muted);
+  margin: 0 0 6px 0;
+  letter-spacing: .2px;
+  text-transform: uppercase;
+}
+.title{
+  margin: 0;
+  font-size: 1.15rem;
   font-weight: 900;
+  color: var(--text);
+}
+.muted{
+  color: var(--muted);
+  font-weight: 650;
+  margin: 8px 0 0 0;
+  line-height: 1.45;
+}
+.smallline{ font-size:0.95rem; color: var(--muted); font-weight: 650; }
+.badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:#FAFBFF;
+  color: var(--muted);
+  font-weight:850;
   font-size: 0.9rem;
 }
-.badge.ok{
-  background: #E6FFF3 !important;
-  border-color: #29B37C !important;
-  color: #0B6B4B !important;
+.badge-ok{
+  border-color: rgba(23,178,106,0.25);
+  background: rgba(23,178,106,0.10);
+  color: #08603B;
 }
-.badge.warn{
-  background: #FFF5D6 !important;
-  border-color: #D39B00 !important;
-  color: #7A5600 !important;
+.badge-brand{
+  border-color: rgba(11,99,243,0.25);
+  background: rgba(11,99,243,0.08);
+  color: #0B63F3;
 }
-.badge.bad{
-  background: #FFE7EC !important;
-  border-color: #E64664 !important;
-  color: #9E1230 !important;
+
+.stProgress > div > div > div > div{ border-radius: 999px !important; }
+div[data-testid="stAlert"]{ border-radius: 14px !important; }
+div[data-testid="stExpander"]{
+  border-radius: 16px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--card) !important;
+  box-shadow: var(--shadow);
 }
-.smallmuted{ color:#3A4A63; font-weight:600; }
+div[data-testid="stExpander"] > details > summary{
+  padding: 10px 14px !important;
+  font-weight: 850 !important;
+}
+div[data-testid="stTextArea"] textarea{
+  border-radius: 14px !important;
+}
+div[data-testid="stFileUploader"]{
+  border-radius: 14px !important;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -135,57 +190,77 @@ h1, h2, h3 { color: #0B63F3; }
 
 
 # ==============================
-# 🧠 Estado do app
+# 🧠 Estado (somente chaves pequenas)
 # ==============================
 def _ensure_state():
-    if "view" not in st.session_state:
-        st.session_state["view"] = "single"  # single | batch
-    if "single_tab" not in st.session_state:
-        st.session_state["single_tab"] = "txt"  # txt | wav
-    if "batch_tab" not in st.session_state:
-        st.session_state["batch_tab"] = "txt"  # txt | wav
+    ss = st.session_state
+    ss.setdefault("view", "single")            # single | batch
+    ss.setdefault("single_mode", "text")       # text | wav
+    ss.setdefault("batch_mode", "text")        # text | wav
+    ss.setdefault("processing", False)
 
-    if "last_result" not in st.session_state:
-        st.session_state["last_result"] = None
-    if "batch_results" not in st.session_state:
-        st.session_state["batch_results"] = None
-    if "batch_lote" not in st.session_state:
-        st.session_state["batch_lote"] = None  # dict com excel do lote aberto
+    ss.setdefault("single_result_id", "")
+    ss.setdefault("batch_result_id", "")
 
-    if "last_run_id" not in st.session_state:
-        st.session_state["last_run_id"] = ""
-
+    ss.setdefault("ema_text_sec", None)
+    ss.setdefault("ema_wav_sec", None)
+    ss.setdefault("ema_batch_item_sec", None)
 
 _ensure_state()
 
 
-def clear_all_results():
-    st.session_state["last_result"] = None
-    st.session_state["batch_results"] = None
-    st.session_state["batch_lote"] = None
-    st.session_state["last_run_id"] = ""
+# ==============================
+# 🧺 Store em memória (fora do session_state)
+# ==============================
+_STORE: Dict[str, Dict[str, Any]] = {}
+_STORE_ORDER: List[str] = []
+_STORE_MAX = 40
 
+def _store_put(payload: Dict[str, Any]) -> str:
+    sid = uuid.uuid4().hex
+    _STORE[sid] = payload
+    _STORE_ORDER.append(sid)
+    while len(_STORE_ORDER) > _STORE_MAX:
+        old = _STORE_ORDER.pop(0)
+        _STORE.pop(old, None)
+    return sid
+
+def _store_get(sid: str) -> Optional[Dict[str, Any]]:
+    if not sid:
+        return None
+    return _STORE.get(sid)
+
+def _store_del(sid: str) -> None:
+    if not sid:
+        return
+    _STORE.pop(sid, None)
+    try:
+        _STORE_ORDER.remove(sid)
+    except ValueError:
+        pass
 
 def clear_single():
-    st.session_state["last_result"] = None
-    st.session_state["last_run_id"] = ""
-
+    _store_del(st.session_state.get("single_result_id", ""))
+    st.session_state["single_result_id"] = ""
 
 def clear_batch():
-    st.session_state["batch_results"] = None
-    st.session_state["batch_lote"] = None
-    st.session_state["last_run_id"] = ""
+    _store_del(st.session_state.get("batch_result_id", ""))
+    st.session_state["batch_result_id"] = ""
+
+def clear_all():
+    clear_single()
+    clear_batch()
 
 
 # ==============================
-# ✅ Validação do TXT
+# ✅ Validação (cliente-first)
 # ==============================
-def validar_transcricao(txt: str) -> Tuple[bool, str]:
-    linhas = [l.strip() for l in (txt or "").splitlines() if l.strip()]
+def validar_conversa(texto: str) -> Tuple[bool, str]:
+    linhas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
     if len(linhas) < 4:
-        return False, "Texto muito curto."
+        return False, "O conteúdo está curto demais para análise. Cole uma conversa completa."
     if not any(re.match(r"^\[(VENDEDOR|CLIENTE)\]", l, re.I) for l in linhas):
-        return False, "Formato inválido. Comece as falas com [VENDEDOR] e [CLIENTE]."
+        return False, "Use o formato com [VENDEDOR] e [CLIENTE] no início de cada fala."
     return True, "ok"
 
 
@@ -200,22 +275,21 @@ def duracao_wav_seg_bytes(wav_bytes: bytes) -> float:
     except Exception:
         return 0.0
 
-
 def human_time(sec: float) -> str:
     try:
         sec = float(sec)
     except Exception:
         sec = 0.0
+    sec = max(0.0, sec)
     if sec < 60:
         return f"{int(sec)}s"
     return f"{int(sec // 60)}m {int(sec % 60)}s"
 
 
 # ==============================
-# 📏 Excel: formatar largura + wrap text
+# 📏 Excel: formatação leve
 # ==============================
 from io import BytesIO
-
 
 def format_excel_bytes(excel_bytes: bytes) -> bytes:
     if not excel_bytes:
@@ -232,7 +306,6 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
     ws.freeze_panes = "A2"
 
     long_text_markers = ("_texto", "_feedback", "justific", "trecho", "observ", "coment", "resumo", "explic")
-
     headers = {}
     for col_idx in range(1, ws.max_column + 1):
         v = ws.cell(row=1, column=col_idx).value
@@ -246,13 +319,11 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
     for header, col_idx in headers.items():
         h = str(header).lower()
         is_long = any(m in h for m in long_text_markers)
-
         col_letter = ws.cell(row=1, column=col_idx).column_letter
         ws.column_dimensions[col_letter].width = min(
             EXCEL_TEXT_COL_W if is_long else EXCEL_DEFAULT_COL_W,
             EXCEL_MAX_COL_W,
         )
-
         if EXCEL_WRAP_TEXT:
             for r in range(1, max_rows + 1):
                 cell = ws.cell(row=r, column=col_idx)
@@ -263,11 +334,9 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
     wb.save(out)
     return out.getvalue()
 
-
 def excel_bytes_to_df(excel_bytes: bytes) -> pd.DataFrame:
     bio = io.BytesIO(excel_bytes)
     return pd.read_excel(bio)
-
 
 def _safe_df(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -283,78 +352,44 @@ def _safe_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ==============================
-# 🌐 API — VPS (05_api_vps.py)
+# 🌐 Conectividade
 # ==============================
-def vps_health() -> bool:
+@st.cache_data(ttl=8)
+def _health_cached(url: str) -> bool:
     try:
-        r = requests.get(f"{VPS_BASE_URL}/health", timeout=(3, 6))
+        r = requests.get(f"{url}/health", timeout=(3, 6))
         return r.status_code == 200
     except Exception:
         return False
 
-
-def vps_run_file(file_bytes: bytes, filename: str, mime: str, status_cb=None) -> Tuple[bytes, Dict[str, str], float]:
-    """
-    Chama /run e devolve (zip_bytes, headers úteis, elapsed_sec).
-    """
-    files = {"file": (filename, file_bytes, mime)}
-    headers = {"X-API-KEY": VPS_API_KEY}
-
-    t0 = time.time()
-    try:
-        if status_cb:
-            status_cb("Enviando arquivo…", 0.10, None)
-
-        r = requests.post(
-            f"{VPS_BASE_URL}/run",
-            files=files,
-            headers=headers,
-            timeout=REQ_TIMEOUT,
-        )
-
-        if status_cb:
-            # a request só retorna ao final; aqui é “pós-retorno”
-            status_cb("Finalizando e preparando resultado…", 0.95, None)
-
-        r.raise_for_status()
-        zip_bytes = r.content
-        useful = {
-            "X-Run-Id": r.headers.get("X-Run-Id", ""),
-            "X-Debug": r.headers.get("X-Debug", ""),
-        }
-        return zip_bytes, useful, (time.time() - t0)
-
-    except requests.exceptions.ConnectTimeout:
-        raise RuntimeError(
-            "Não consegui CONECTAR na VPS.\n"
-            "Possíveis causas: porta fechada, URL incorreta, servidor fora do ar.\n"
-            f"Servidor: {_pretty_url(VPS_BASE_URL)}\n"
-            f"Timeout(connect/read): {CONNECT_TIMEOUT_S}s / {READ_TIMEOUT_S}s"
-        )
-    except requests.exceptions.ReadTimeout:
-        raise RuntimeError(
-            "Conectei na VPS, mas ela demorou para responder.\n"
-            "Tente um áudio menor ou aumente API_TIMEOUT_S."
-        )
-    except requests.exceptions.ConnectionError as e:
-        raise RuntimeError(
-            "Falha de rede ao acessar a VPS.\n"
-            f"Servidor: {_pretty_url(VPS_BASE_URL)}\nDetalhe: {e}"
-        )
-    except requests.exceptions.HTTPError:
-        try:
-            body = r.text[:800]
-            code = r.status_code
-        except Exception:
-            body = "—"
-            code = "—"
-        raise RuntimeError(f"Servidor respondeu com erro.\nStatus: {code}\nBody: {body}")
-    except Exception as e:
-        raise RuntimeError(f"Erro inesperado ao chamar a VPS: {e}")
+def service_ok() -> bool:
+    if st.session_state.get("processing"):
+        return True
+    return _health_cached(BASE_URL)
 
 
 # ==============================
-# 📦 ZIP helpers
+# 🌐 Chamada principal (retorna ZIP)
+# ==============================
+def run_remote_file(file_bytes: bytes, filename: str, mime: str) -> Tuple[bytes, str]:
+    files = {"file": (filename, file_bytes, mime)}
+    headers = {}
+    if API_KEY:
+        headers["X-API-KEY"] = API_KEY
+
+    r = requests.post(
+        f"{BASE_URL}/run",
+        files=files,
+        headers=headers,
+        timeout=REQ_TIMEOUT,
+    )
+    r.raise_for_status()
+    run_id = r.headers.get("X-Run-Id", "") or ""
+    return r.content, run_id
+
+
+# ==============================
+# 📦 ZIP helpers (somente Excel)
 # ==============================
 def zip_extract_all(zip_bytes: bytes) -> Dict[str, bytes]:
     out: Dict[str, bytes] = {}
@@ -366,7 +401,6 @@ def zip_extract_all(zip_bytes: bytes) -> Dict[str, bytes]:
             except Exception:
                 pass
     return out
-
 
 def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
     excels = [(k, v) for k, v in files_map.items() if k.lower().endswith(".xlsx")]
@@ -385,754 +419,887 @@ def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
     return excels
 
 
-def pick_txts(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
-    return [(k, v) for k, v in files_map.items() if k.lower().endswith(".txt") and "/txt/" in k.lower()]
-
-
-def summarize_excel_presence(df: pd.DataFrame) -> str:
-    """
-    Comentário “profissional” e útil, sem ficar vazio/óbvio.
-    Baseado apenas nas colunas existentes e padrões simples (sem pontuação).
-    """
+# ==============================
+# 🧾 Mensagem curta (cliente-first)
+# ==============================
+def summarize_excel(df: pd.DataFrame) -> str:
     if df is None or df.empty:
-        return "Não foi possível abrir a planilha gerada."
-
+        return "A planilha foi gerada com sucesso. Faça o download para abrir no Excel."
     cols = [str(c).strip() for c in df.columns]
-    cols_l = [c.lower() for c in cols]
-
-    # tenta achar colunas de fases
     phase_cols = [c for c in cols if c.lower().startswith("check_") or re.match(r"^p[0-4]", c.lower())]
     if not phase_cols:
-        return (
-            "A planilha foi gerada com sucesso. "
-            "Ela não traz colunas explícitas de fases (P0–P4 / CHECK_*), então a leitura deve ser feita pelas colunas do próprio relatório."
-        )
-
-    # interpreta se há muitos zeros (quando numérico)
+        return "Planilha gerada com sucesso. Use as colunas do relatório para interpretar os resultados."
     try:
         dfn = df[phase_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
         total = float(dfn.sum().sum())
         if total == 0.0:
-            return (
-                "As colunas de fases aparecem na planilha, mas o resultado está zerado neste arquivo. "
-                "Isso normalmente acontece quando a conversa não contém trechos suficientes para caracterizar as fases do método, "
-                "ou quando o texto está muito curto/sem marcação clara."
-            )
-        return (
-            "As fases do método aparecem na planilha. "
-            "Use as colunas de fases para revisar quais etapas foram identificadas e, se houver justificativas/trechos, valide os pontos com a transcrição."
-        )
+            return "Planilha gerada, mas as etapas ficaram zeradas neste conteúdo (comum em conversas curtas ou sem evidências claras)."
+        return "Planilha gerada com as etapas identificadas. Use as colunas de etapas e justificativas (quando houver) para revisar."
     except Exception:
-        return (
-            "As colunas de fases aparecem na planilha, mas não foi possível interpretar os valores automaticamente. "
-            "Ainda assim, você pode revisar as colunas de fases e os campos de justificativa/trechos na tabela."
-        )
+        return "Planilha gerada com sucesso. Revise as colunas de etapas e justificativas para validar."
 
 
 # ==============================
-# 🧩 UI helpers: cards/badges
+# ⏳ Progresso elegante (thread só para request)
 # ==============================
-def render_badges_public(kind: str = "", run_id: str = ""):
-    parts = []
-    if kind:
-        parts.append(f'<span class="badge ok">{kind.upper()}</span>')
-    if run_id:
-        parts.append(f'<span class="badge">Protocolo: {run_id}</span>')
+def run_with_progress(phases: List[str], target_func, estimate_total_sec: Optional[float] = None):
+    ss = st.session_state
+    ss["processing"] = True
 
-    st.markdown(
-        f"""
+    wrap = st.container()
+    with wrap:
+        st.markdown(
+            """
 <div class="card">
-  <p style="margin:0;">{"&nbsp;&nbsp;".join(parts) if parts else "—"}</p>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-def render_time_card(audio_sec: float, total_sec: float):
-    st.markdown(
-        f"""
-<div class="card">
-  <h3 style="margin:0;">⏱️ Tempo</h3>
-  <p style="margin-top:10px;margin-bottom:0;">
-    <span class="badge">Ligação</span> <b>{human_time(audio_sec)}</b>
-    &nbsp;&nbsp;&nbsp;
-    <span class="badge">Processamento</span> <b>{human_time(total_sec)}</b>
-  </p>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-def render_downloads_explain_individual():
-    st.markdown(
-        """
-<div class="card">
-  <h3 style="margin:0;">📥 Downloads</h3>
-  <p class="smallmuted" style="margin:8px 0 0 0;">
-    Baixe a planilha de avaliação pronta para abrir no Excel.
-  </p>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-def render_downloads_explain_batch():
-    st.markdown(
-        """
-<div class="card">
-  <h3 style="margin:0;">📥 Downloads</h3>
-  <p class="smallmuted" style="margin:8px 0 0 0;">
-    • <b>Excel do lote:</b> consolida todos os arquivos enviados.<br/>
-    • <b>Excel individual:</b> planilha separada por arquivo (útil para auditoria).<br/>
-    • <b>TXT rotulado:</b> disponível quando o envio foi por áudio.
-  </p>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-# ==============================
-# ⏳ Progresso (UI)
-# ==============================
-def make_status_ui():
-    status = st.empty()
-    pbar = st.progress(0)
-    timer = st.empty()
-
-    t0 = time.time()
-
-    def update(msg: str, p: float, est_sec: Optional[float]):
-        elapsed = time.time() - t0
-        # estimativa só quando fizer sentido (se fornecer)
-        if est_sec and est_sec > elapsed:
-            timer.markdown(f"<div class='smallmuted'>⏳ Rodando há <b>{human_time(elapsed)}</b> • estimativa: <b>{human_time(est_sec)}</b></div>", unsafe_allow_html=True)
-        else:
-            timer.markdown(f"<div class='smallmuted'>⏳ Rodando há <b>{human_time(elapsed)}</b></div>", unsafe_allow_html=True)
-
-        status.markdown(
-            f"""
-<div class="card">
-  <h3 style="margin:0;">{msg}</h3>
-  <p class="smallmuted" style="margin:8px 0 0 0;">Aguarde…</p>
+  <div class="kicker">Em andamento</div>
+  <div class="title">Estamos preparando seu relatório</div>
+  <div class="muted">Você pode acompanhar o progresso abaixo.</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
-        pbar.progress(max(0, min(1, float(p))))
+        phase_line = st.empty()
+        pbar = st.progress(0)
+        timer_line = st.empty()
 
-    def done():
-        status.empty()
-        timer.empty()
-        pbar.empty()
+    holder = {"ok": False, "value": None, "error": None}
+    t0 = time.time()
 
-    return update, done
+    def _worker():
+        try:
+            val = target_func()
+            holder["ok"] = True
+            holder["value"] = val
+        except Exception as e:
+            holder["error"] = e
+
+    th = threading.Thread(target=_worker, daemon=True)
+    th.start()
+
+    last_idx = -1
+    n = max(1, len(phases))
+
+    while th.is_alive():
+        elapsed = time.time() - t0
+
+        if estimate_total_sec and estimate_total_sec > 2:
+            p = min(0.92, elapsed / max(estimate_total_sec, 1.0))
+        else:
+            p = min(0.85, elapsed / 120.0)
+
+        pbar.progress(max(0.01, float(p)))
+
+        if estimate_total_sec and estimate_total_sec > 2:
+            frac = min(0.999, elapsed / estimate_total_sec)
+        else:
+            frac = min(0.999, p / 0.92)
+
+        idx = min(n - 1, int(frac * n))
+        if idx != last_idx:
+            phase_line.markdown(
+                f"<div class='smallline'>• {phases[idx]}</div>",
+                unsafe_allow_html=True,
+            )
+            last_idx = idx
+
+        timer_line.markdown(
+            f"<div class='smallline'>⏱️ Tempo decorrido: <b>{human_time(elapsed)}</b></div>",
+            unsafe_allow_html=True,
+        )
+
+        time.sleep(0.15)
+
+    elapsed = time.time() - t0
+    pbar.progress(1.0)
+    time.sleep(0.05)
+    wrap.empty()
+
+    ss["processing"] = False
+
+    if not holder["ok"]:
+        raise holder["error"]
+
+    return holder["value"], float(elapsed)
+
+
+def _ema_update(key: str, x: float, alpha: float = 0.25):
+    old = st.session_state.get(key)
+    if old is None:
+        st.session_state[key] = float(x)
+    else:
+        st.session_state[key] = float(alpha * x + (1 - alpha) * float(old))
 
 
 # ==============================
-# 🧹 Limpeza no servidor (VPS)
+# ✅ Execução: Individual (Texto / WAV)
 # ==============================
-# Observação honesta: com o endpoint atual (/run), o painel NÃO tem como apagar as pastas na VPS,
-# porque não existe um endpoint de cleanup. Então:
-# - No painel: limpamos apenas o estado da UI (o que aparece para o usuário).
-# - Na VPS: a limpeza deve ser feita por política do servidor (cron/TTL) ou adicionando endpoint /cleanup.
-#
-# Aqui a gente só mantém a UI consistente e SEM bugs.
-
-
-# ==============================
-# ✅ Processamento: Individual
-# ==============================
-def run_single_txt(txt: str):
-    ok, msg = validar_transcricao(txt)
+def run_single_text(texto: str) -> None:
+    ok, msg = validar_conversa(texto)
     if not ok:
-        st.error(msg)
+        st.warning(msg)
         return
 
-    update, done = make_status_ui()
-    update("Iniciando avaliação…", 0.05, None)
+    fname = f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    est = st.session_state.get("ema_text_sec")
+    phases = ["Preparando…", "Enviando…", "Analisando…", "Gerando planilha…", "Finalizando…"]
 
-    fname = f"painel_txt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-
-    def cb(msg, p, est):
-        # sem estimativa precisa por enquanto
-        update(msg, p, None)
+    def _do():
+        zip_bytes, run_id = run_remote_file(texto.encode("utf-8", errors="ignore"), fname, "text/plain")
+        return zip_bytes, run_id
 
     try:
-        # request só retorna no fim, mas a UI mostra "rodando há X"
-        update("Avaliando conversa…", 0.25, None)
-        zip_bytes, hdr, elapsed = vps_run_file(txt.encode("utf-8", errors="ignore"), fname, "text/plain", status_cb=cb)
-        update("Abrindo planilha…", 0.95, None)
-    except RuntimeError as e:
-        done()
-        st.error("❌ Não foi possível concluir a avaliação.")
-        st.code(str(e))
+        (zip_bytes, run_id), elapsed = run_with_progress(phases, _do, estimate_total_sec=est)
+    except requests.exceptions.ConnectTimeout:
+        st.error("Não consegui iniciar agora. Tente novamente em instantes.")
+        return
+    except requests.exceptions.ReadTimeout:
+        st.error("A análise está demorando mais do que o esperado. Tente novamente.")
+        return
+    except requests.exceptions.HTTPError:
+        st.error("Não foi possível concluir no momento. Tente novamente.")
+        return
+    except Exception:
+        st.error("Não foi possível concluir a avaliação. Tente novamente.")
         return
 
-    done()
+    _ema_update("ema_text_sec", elapsed)
 
     files_map = zip_extract_all(zip_bytes)
     excels = pick_excels(files_map)
     if not excels:
-        st.error("❌ O servidor retornou um resultado, mas não encontrei nenhum Excel.")
-        st.write(list(files_map.keys())[:200])
+        st.error("Concluí a execução, mas não encontrei a planilha de resultado. Tente novamente.")
         return
 
-    # Individual: pega o Excel principal (geralmente o lote ou individual, mas com 1 arquivo tanto faz)
     main_name, main_xlsx = excels[0]
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
-    df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
 
-    st.session_state["last_result"] = {
-        "kind": "txt",
-        "run_id": hdr.get("X-Run-Id", ""),
-        "filename": fname,
+    try:
+        df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
+    except Exception:
+        df = pd.DataFrame()
+
+    payload = {
+        "type": "single",
+        "kind": "text",
+        "run_id": run_id,
+        "source_name": fname,
         "excel_name": main_name,
         "excel_bytes": main_xlsx_fmt,
         "df": df,
         "timings": {"audio_sec": 0.0, "total_sec": float(elapsed)},
-        # extras (não mostramos no individual)
-        "zip_bytes": zip_bytes,
-        "files_map": files_map,
+        "created_at": time.time(),
     }
-    st.session_state["last_run_id"] = hdr.get("X-Run-Id", "")
+
+    clear_single()
+    st.session_state["single_result_id"] = _store_put(payload)
 
 
-def run_single_wav(wav_file):
+def run_single_wav(wav_file) -> None:
     wav_bytes = wav_file.getbuffer().tobytes()
     audio_sec = duracao_wav_seg_bytes(wav_bytes)
+
     if audio_sec and audio_sec > 600:
-        st.error(f"❌ Áudio tem {audio_sec/60:.1f} minutos. Limite recomendado: 10 minutos.")
-        return
+        st.warning("Este áudio parece ter mais de 10 minutos. Pode levar mais tempo para concluir.")
 
-    update, done = make_status_ui()
-    update("Iniciando avaliação…", 0.05, None)
+    est = st.session_state.get("ema_wav_sec")
+    phases = ["Preparando…", "Enviando…", "Processando áudio…", "Analisando…", "Gerando planilha…", "Finalizando…"]
 
-    def cb(msg, p, est):
-        update(msg, p, None)
+    def _do():
+        zip_bytes, run_id = run_remote_file(wav_bytes, wav_file.name, "audio/wav")
+        return zip_bytes, run_id
 
     try:
-        update("Transcrevendo áudio…", 0.25, None)
-        # o servidor faz tudo internamente; aqui a gente apenas comunica “o que está acontecendo”
-        update("Avaliando conversa…", 0.60, None)
-        zip_bytes, hdr, elapsed = vps_run_file(wav_bytes, wav_file.name, "audio/wav", status_cb=cb)
-        update("Abrindo planilha…", 0.95, None)
-    except RuntimeError as e:
-        done()
-        st.error("❌ Não foi possível concluir a avaliação.")
-        st.code(str(e))
+        (zip_bytes, run_id), elapsed = run_with_progress(phases, _do, estimate_total_sec=est)
+    except requests.exceptions.ConnectTimeout:
+        st.error("Não consegui iniciar agora. Tente novamente em instantes.")
+        return
+    except requests.exceptions.ReadTimeout:
+        st.error("A análise está demorando mais do que o esperado. Tente novamente.")
+        return
+    except requests.exceptions.HTTPError:
+        st.error("Não foi possível concluir no momento. Tente novamente.")
+        return
+    except Exception:
+        st.error("Não foi possível concluir a avaliação. Tente novamente.")
         return
 
-    done()
+    _ema_update("ema_wav_sec", elapsed)
 
     files_map = zip_extract_all(zip_bytes)
     excels = pick_excels(files_map)
     if not excels:
-        st.error("❌ O servidor retornou um resultado, mas não encontrei nenhum Excel.")
-        st.write(list(files_map.keys())[:200])
+        st.error("Concluí a execução, mas não encontrei a planilha de resultado. Tente novamente.")
         return
 
     main_name, main_xlsx = excels[0]
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
-    df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
 
-    # se houver TXT rotulado no zip, deixamos disponível para download separado (sem ZIP)
-    txts = pick_txts(files_map)
-    txt_best = txts[0][1].decode("utf-8", errors="ignore") if txts else ""
+    try:
+        df = _safe_df(excel_bytes_to_df(main_xlsx_fmt))
+    except Exception:
+        df = pd.DataFrame()
 
-    st.session_state["last_result"] = {
+    payload = {
+        "type": "single",
         "kind": "wav",
-        "run_id": hdr.get("X-Run-Id", ""),
-        "filename": wav_file.name,
+        "run_id": run_id,
+        "source_name": wav_file.name,
         "excel_name": main_name,
         "excel_bytes": main_xlsx_fmt,
         "df": df,
         "timings": {"audio_sec": float(audio_sec or 0.0), "total_sec": float(elapsed)},
-        "txt_rotulado": txt_best,
-        # extras (não mostramos no individual)
-        "zip_bytes": zip_bytes,
-        "files_map": files_map,
+        "created_at": time.time(),
     }
-    st.session_state["last_run_id"] = hdr.get("X-Run-Id", "")
+
+    clear_single()
+    st.session_state["single_result_id"] = _store_put(payload)
 
 
 # ==============================
-# ✅ Processamento: Lote (até 10)
+# ✅ Execução: Lote (Texto / WAV) — limites
 # ==============================
-def run_batch_txt(files: List[Any], pasted_blocks: List[str]):
-    entradas: List[Tuple[str, str]] = []
+MAX_BATCH_WAV_FILES = 5
+MAX_BATCH_WAV_SECONDS = 600
+MAX_BATCH_TEXT_ENTRIES = 8
 
-    if files:
-        for f in files[:10]:
-            content = f.getvalue().decode("utf-8", errors="ignore")
-            entradas.append((f.name, content))
-
-    if pasted_blocks:
-        for i, b in enumerate(pasted_blocks[:10], start=1):
-            entradas.append((f"colado_{i}.txt", b))
-
-    if not entradas:
-        st.error("Envie TXT(s) ou cole pelo menos um bloco.")
-        return
-
-    # valida antes
-    for name, txt in entradas:
-        ok, msg = validar_transcricao(txt)
-        if not ok:
-            st.error(f"❌ {name}: {msg}")
-            return
-
-    update, done = make_status_ui()
-    update("Iniciando lote…", 0.05, None)
-
-    itens: List[dict] = []
-    t_total = 0.0
-
-    for idx, (name, txt) in enumerate(entradas, start=1):
-        update(f"Avaliando {idx}/{len(entradas)}…", 0.10 + 0.80 * (idx - 1) / max(1, len(entradas)), None)
-        try:
-            zip_bytes, hdr, elapsed = vps_run_file(txt.encode("utf-8", errors="ignore"), name, "text/plain")
-        except RuntimeError as e:
-            done()
-            st.error(f"❌ Falha ao avaliar {name}")
-            st.code(str(e))
-            return
-
-        t_total += float(elapsed)
-        files_map = zip_extract_all(zip_bytes)
-        excels = pick_excels(files_map)
-
-        # por item: queremos o excel individual
-        indiv_name = ""
-        indiv_xlsx_fmt = b""
-        if excels:
-            # se tiver _SPIN.xlsx preferir ele como individual
-            chosen = None
-            for nm, xb in excels:
-                if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
-                    chosen = (nm, xb)
-                    break
-            if not chosen:
-                chosen = excels[0]
-            indiv_name, indiv_xlsx = chosen
-            indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
-
-        itens.append(
-            {
-                "idx": idx,
-                "kind": "txt",
-                "filename": name,
-                "run_id": hdr.get("X-Run-Id", ""),
-                "excel_individual_name": indiv_name,
-                "excel_individual_bytes": indiv_xlsx_fmt,
-            }
-        )
-
-        # lote: quando houver SPIN_RESULTADOS_LOTE, guardamos para “excel aberto do lote”
-        lote_excel = None
-        for nm, xb in excels:
-            if "spin_resultados_lote" in nm.lower():
-                lote_excel = (nm, format_excel_bytes(xb))
-                break
-
-        # se só há 1 arquivo, pode existir lote também. no batch, sempre priorizamos lote
-        if lote_excel:
-            st.session_state["batch_lote"] = {
-                "excel_name": lote_excel[0],
-                "excel_bytes": lote_excel[1],
-                "df": _safe_df(excel_bytes_to_df(lote_excel[1])),
-            }
-
-    done()
-
-    st.session_state["batch_results"] = itens
-    st.session_state["last_run_id"] = (itens[-1]["run_id"] if itens else "")
-
-
-def run_batch_wav(wavs: List[Any]):
-    if not wavs:
-        st.error("Envie pelo menos 1 WAV.")
-        return
-    if len(wavs) > 10:
-        st.error("Limite: 10 áudios por lote.")
-        return
-
-    update, done = make_status_ui()
-    update("Iniciando lote…", 0.05, None)
-
-    itens: List[dict] = []
-
-    for idx, wavf in enumerate(wavs[:10], start=1):
-        update(f"Processando {idx}/{min(10, len(wavs))}…", 0.10 + 0.80 * (idx - 1) / max(1, min(10, len(wavs))), None)
-
-        wav_bytes = wavf.getbuffer().tobytes()
-        try:
-            zip_bytes, hdr, elapsed = vps_run_file(wav_bytes, wavf.name, "audio/wav")
-        except RuntimeError as e:
-            done()
-            st.error(f"❌ Falha ao avaliar {wavf.name}")
-            st.code(str(e))
-            return
-
-        files_map = zip_extract_all(zip_bytes)
-        excels = pick_excels(files_map)
-
-        # individual do item
-        indiv_name = ""
-        indiv_xlsx_fmt = b""
-        if excels:
-            chosen = None
-            for nm, xb in excels:
-                if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
-                    chosen = (nm, xb)
-                    break
-            if not chosen:
-                chosen = excels[0]
-            indiv_name, indiv_xlsx = chosen
-            indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
-
-        # txt rotulado separado
-        txts = pick_txts(files_map)
-        txt_best = txts[0][1].decode("utf-8", errors="ignore") if txts else ""
-
-        itens.append(
-            {
-                "idx": idx,
-                "kind": "wav",
-                "filename": wavf.name,
-                "run_id": hdr.get("X-Run-Id", ""),
-                "excel_individual_name": indiv_name,
-                "excel_individual_bytes": indiv_xlsx_fmt,
-                "txt_rotulado": txt_best,
-            }
-        )
-
-        # lote
-        lote_excel = None
-        for nm, xb in excels:
-            if "spin_resultados_lote" in nm.lower():
-                lote_excel = (nm, format_excel_bytes(xb))
-                break
-        if lote_excel:
-            st.session_state["batch_lote"] = {
-                "excel_name": lote_excel[0],
-                "excel_bytes": lote_excel[1],
-                "df": _safe_df(excel_bytes_to_df(lote_excel[1])),
-            }
-
-    done()
-    st.session_state["batch_results"] = itens
-    st.session_state["last_run_id"] = (itens[-1]["run_id"] if itens else "")
-
-
-# ==============================
-# 🧠 Cabeçalho
-# ==============================
-st.markdown("## 🎧 SPIN Analyzer — Avaliação de Ligações")
-st.markdown(
-    "Análise automática de ligações de **Televendas Técnico-Consultivas (TTC)** "
-    "com base no método **SPIN Selling**."
-)
-st.markdown("---")
-
-
-# ==============================
-# 🧭 Sidebar (sem URLs / sem técnica)
-# ==============================
-with st.sidebar:
-    st.markdown("### 🧭 Navegação")
-
-    if st.button("👤 Avaliação Individual", use_container_width=True, key="nav_single"):
-        if st.session_state["view"] != "single":
-            clear_all_results()
-        st.session_state["view"] = "single"
-        st.rerun()
-
-    if st.button("📊 Visão Gerencial", use_container_width=True, key="nav_batch"):
-        if st.session_state["view"] != "batch":
-            clear_all_results()
-        st.session_state["view"] = "batch"
-        st.rerun()
-
-    st.markdown("---")
-
-    online = vps_health()
-    if online:
-        st.success("Servidor conectado ✅")
+def _batch_limits_card(kind: str):
+    if kind == "wav":
+        msg = f"Áudio: até {MAX_BATCH_WAV_FILES} arquivos • até 10 minutos cada"
     else:
-        st.warning("Servidor indisponível ⚠️")
-
-    st.markdown("---")
-    if st.button("🧹 Limpar", use_container_width=True, key="nav_clear_all"):
-        clear_all_results()
-        st.rerun()
-
-
-# ==============================
-# ✅ UI: Telas
-# ==============================
-if st.session_state["view"] == "single":
-    st.markdown("### 👤 Avaliação Individual")
-    tab_txt, tab_wav = st.tabs(["📝 Texto", "🎧 Áudio"])
-
-    # -------- TXT
-    with tab_txt:
-        # reset ao trocar de aba
-        if st.session_state.get("single_tab") != "txt":
-            clear_single()
-            st.session_state["single_tab"] = "txt"
-
-        st.markdown("<div class='smallmuted'>O texto deve começar as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>", unsafe_allow_html=True)
-
-        txt_input = st.text_area(
-            "Cole a transcrição aqui",
-            height=260,
-            value="",
-            key="txt_input_single",
-            placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n[VENDEDOR] ...",
-        )
-
-        colA, colB = st.columns(2)
-        with colA:
-            if st.button("✅ Iniciar avaliação", use_container_width=True, key="btn_eval_txt_single"):
-                clear_single()
-                run_single_txt(txt_input)
-
-        with colB:
-            if st.button("🧹 Limpar", use_container_width=True, key="btn_clear_txt_single"):
-                clear_single()
-                st.rerun()
-
-    # -------- WAV
-    with tab_wav:
-        if st.session_state.get("single_tab") != "wav":
-            clear_single()
-            st.session_state["single_tab"] = "wav"
-
-        up_wav = st.file_uploader(
-            "Envie um WAV (até ~10 min)",
-            type=["wav"],
-            accept_multiple_files=False,
-            key="uploader_wav_single",
-        )
-
-        colA, colB = st.columns(2)
-        with colA:
-            if st.button("✅ Iniciar avaliação", use_container_width=True, key="btn_eval_wav_single"):
-                if up_wav is None:
-                    st.error("Envie um WAV para continuar.")
-                else:
-                    clear_single()
-                    run_single_wav(up_wav)
-
-        with colB:
-            if st.button("🧹 Limpar", use_container_width=True, key="btn_clear_wav_single"):
-                clear_single()
-                st.rerun()
-
-else:
-    st.markdown("### 📊 Visão Gerencial (até 10)")
-    tab_txt, tab_wav = st.tabs(["📝 Texto", "🎧 Áudio"])
-
-    # -------- BATCH TXT
-    with tab_txt:
-        if st.session_state.get("batch_tab") != "txt":
-            clear_batch()
-            st.session_state["batch_tab"] = "txt"
-
-        st.markdown("<div class='smallmuted'>Os textos devem começar as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>", unsafe_allow_html=True)
-
-        up_txts = st.file_uploader(
-            "Envie até 10 arquivos .txt",
-            type=["txt"],
-            accept_multiple_files=True,
-            key="uploader_txt_batch",
-        )
-
-        st.markdown("Ou cole vários blocos separados por uma linha contendo `---`")
-        multi_txt = st.text_area(
-            "Cole aqui (separe com ---)",
-            height=220,
-            value="",
-            key="txt_input_batch",
-            placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n---\n[VENDEDOR] ...\n[CLIENTE] ...",
-        )
-
-        colA, colB = st.columns(2)
-        with colA:
-            if st.button("✅ Iniciar avaliação", use_container_width=True, key="btn_run_batch_txt"):
-                blocks = []
-                if multi_txt.strip():
-                    blocks = [b.strip() for b in multi_txt.split("\n---\n") if b.strip()]
-                clear_batch()
-                run_batch_txt(up_txts or [], blocks)
-
-        with colB:
-            if st.button("🧹 Limpar", use_container_width=True, key="btn_clear_batch_txt"):
-                clear_batch()
-                st.rerun()
-
-    # -------- BATCH WAV
-    with tab_wav:
-        if st.session_state.get("batch_tab") != "wav":
-            clear_batch()
-            st.session_state["batch_tab"] = "wav"
-
-        up_wavs = st.file_uploader(
-            "Envie até 10 WAVs",
-            type=["wav"],
-            accept_multiple_files=True,
-            key="uploader_wav_batch",
-        )
-
-        colA, colB = st.columns(2)
-        with colA:
-            if st.button("✅ Iniciar avaliação", use_container_width=True, key="btn_run_batch_wav"):
-                clear_batch()
-                run_batch_wav(up_wavs or [])
-
-        with colB:
-            if st.button("🧹 Limpar", use_container_width=True, key="btn_clear_batch_wav"):
-                clear_batch()
-                st.rerun()
-
-
-# ==============================
-# ✅ RESULTADO: Individual
-# - Excel primeiro (aberto)
-# - Tempo logo abaixo
-# - Comentário profissional opcional (curto e útil)
-# - Downloads sem ZIP (excel + txt se tiver)
-# ==============================
-lr = st.session_state.get("last_result")
-if lr and isinstance(lr.get("df"), pd.DataFrame):
-    st.markdown("---")
-    st.markdown("## ✅ Resultado")
-
-    render_badges_public(kind=lr.get("kind", ""), run_id=lr.get("run_id", ""))
-
-    df = lr["df"]
-    st.markdown("### 📊 Planilha (aberta)")
-    st.dataframe(df, use_container_width=True)
-
-    timings = lr.get("timings", {}) or {}
-    audio_sec = float(timings.get("audio_sec", 0) or 0)
-    total_sec = float(timings.get("total_sec", 0) or 0)
-    render_time_card(audio_sec, total_sec)
-
-    # Comentário (bem mais útil e direto). Se preferir tirar, basta remover este bloco.
-    comment = summarize_excel_presence(df)
+        msg = f"Texto: até {MAX_BATCH_TEXT_ENTRIES} entradas no total (arquivos + blocos colados)"
     st.markdown(
         f"""
-<div class="card">
-  <h3 style="margin:0;">📌 Observação</h3>
-  <p style="margin-top:10px;margin-bottom:0;">{comment}</p>
+<div class="card-tight">
+  <div class="kicker">Limites do lote</div>
+  <div class="smallline">{msg}</div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
-    render_downloads_explain_individual()
+def run_batch_text(files: List[Any], pasted_blocks: List[str]) -> None:
+    entradas: List[Tuple[str, str]] = []
 
-    filename = lr.get("filename") or f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    base = Path(filename).stem
+    if files:
+        for f in files:
+            if len(entradas) >= MAX_BATCH_TEXT_ENTRIES:
+                break
+            try:
+                entradas.append((f.name, f.getvalue().decode("utf-8", errors="ignore")))
+            except Exception:
+                entradas.append((f.name, ""))
 
+    if pasted_blocks:
+        for i, b in enumerate(pasted_blocks, start=1):
+            if len(entradas) >= MAX_BATCH_TEXT_ENTRIES:
+                break
+            entradas.append((f"colado_{i}.txt", b))
+
+    if not entradas:
+        st.warning("Envie arquivos de texto ou cole pelo menos um bloco.")
+        return
+
+    if len(entradas) > MAX_BATCH_TEXT_ENTRIES:
+        st.warning(f"Para lote em texto, use até {MAX_BATCH_TEXT_ENTRIES} entradas no total.")
+        return
+
+    for name, txt in entradas:
+        ok, msg = validar_conversa(txt)
+        if not ok:
+            st.warning(f"• {name}: {msg}")
+            return
+
+    est_item = st.session_state.get("ema_batch_item_sec")
+    est_total = (est_item * len(entradas)) if est_item else None
+    phases = ["Preparando…", "Enviando itens…", "Analisando…", "Consolidando…", "Finalizando…"]
+
+    def _do():
+        itens: List[dict] = []
+        lote_excel_payload = None
+
+        for idx, (name, txt) in enumerate(entradas, start=1):
+            zip_bytes, run_id = run_remote_file(txt.encode("utf-8", errors="ignore"), name, "text/plain")
+            files_map = zip_extract_all(zip_bytes)
+            excels = pick_excels(files_map)
+
+            chosen = None
+            for nm, xb in excels:
+                if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
+                    chosen = (nm, xb)
+                    break
+            if not chosen and excels:
+                chosen = excels[0]
+
+            indiv_name, indiv_xlsx_fmt = "", b""
+            if chosen:
+                indiv_name, indiv_xlsx = chosen
+                indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
+
+            itens.append(
+                {
+                    "idx": idx,
+                    "kind": "text",
+                    "filename": name,
+                    "run_id": run_id,
+                    "excel_individual_name": indiv_name,
+                    "excel_individual_bytes": indiv_xlsx_fmt,
+                }
+            )
+
+            for nm, xb in excels:
+                if "spin_resultados_lote" in nm.lower():
+                    lote_excel_payload = (nm, format_excel_bytes(xb))
+                    break
+
+        return itens, lote_excel_payload
+
+    try:
+        (itens, lote_excel_payload), elapsed = run_with_progress(phases, _do, estimate_total_sec=est_total)
+    except Exception:
+        st.error("Não foi possível concluir o lote. Tente novamente em instantes.")
+        return
+
+    if len(entradas) > 0:
+        _ema_update("ema_batch_item_sec", elapsed / max(1, len(entradas)))
+
+    lote_df = pd.DataFrame()
+    lote_name = ""
+    lote_bytes = b""
+    if lote_excel_payload:
+        lote_name, lote_bytes = lote_excel_payload
+        try:
+            lote_df = _safe_df(excel_bytes_to_df(lote_bytes))
+        except Exception:
+            lote_df = pd.DataFrame()
+
+    payload = {
+        "type": "batch",
+        "kind": "text",
+        "count": len(entradas),
+        "created_at": time.time(),
+        "lote": {"excel_name": lote_name, "excel_bytes": lote_bytes, "df": lote_df},
+        "items": itens,
+        "timings": {"total_sec": float(elapsed)},
+    }
+
+    clear_batch()
+    st.session_state["batch_result_id"] = _store_put(payload)
+
+
+def run_batch_wav(wavs: List[Any]) -> None:
+    if not wavs:
+        st.warning("Envie pelo menos 1 áudio para continuar.")
+        return
+
+    if len(wavs) > MAX_BATCH_WAV_FILES:
+        st.warning(f"Para lote em áudio, envie até {MAX_BATCH_WAV_FILES} arquivos.")
+        return
+
+    for wf in wavs:
+        try:
+            sec = duracao_wav_seg_bytes(wf.getbuffer().tobytes())
+        except Exception:
+            sec = 0.0
+        if sec and sec > MAX_BATCH_WAV_SECONDS:
+            st.warning(f"• {wf.name}: acima de 10 minutos. Ajuste o arquivo e tente novamente.")
+            return
+
+    est_item = st.session_state.get("ema_batch_item_sec")
+    est_total = (est_item * len(wavs)) if est_item else None
+    phases = ["Preparando…", "Enviando itens…", "Analisando…", "Consolidando…", "Finalizando…"]
+
+    def _do():
+        itens: List[dict] = []
+        lote_excel_payload = None
+
+        for idx, wavf in enumerate(wavs, start=1):
+            wav_bytes = wavf.getbuffer().tobytes()
+            zip_bytes, run_id = run_remote_file(wav_bytes, wavf.name, "audio/wav")
+            files_map = zip_extract_all(zip_bytes)
+            excels = pick_excels(files_map)
+
+            chosen = None
+            for nm, xb in excels:
+                if nm.lower().endswith("_spin.xlsx") or "_spin" in nm.lower():
+                    chosen = (nm, xb)
+                    break
+            if not chosen and excels:
+                chosen = excels[0]
+
+            indiv_name, indiv_xlsx_fmt = "", b""
+            if chosen:
+                indiv_name, indiv_xlsx = chosen
+                indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
+
+            itens.append(
+                {
+                    "idx": idx,
+                    "kind": "wav",
+                    "filename": wavf.name,
+                    "run_id": run_id,
+                    "excel_individual_name": indiv_name,
+                    "excel_individual_bytes": indiv_xlsx_fmt,
+                }
+            )
+
+            for nm, xb in excels:
+                if "spin_resultados_lote" in nm.lower():
+                    lote_excel_payload = (nm, format_excel_bytes(xb))
+                    break
+
+        return itens, lote_excel_payload
+
+    try:
+        (itens, lote_excel_payload), elapsed = run_with_progress(phases, _do, estimate_total_sec=est_total)
+    except Exception:
+        st.error("Não foi possível concluir o lote. Tente novamente em instantes.")
+        return
+
+    if len(wavs) > 0:
+        _ema_update("ema_batch_item_sec", elapsed / max(1, len(wavs)))
+
+    lote_df = pd.DataFrame()
+    lote_name = ""
+    lote_bytes = b""
+    if lote_excel_payload:
+        lote_name, lote_bytes = lote_excel_payload
+        try:
+            lote_df = _safe_df(excel_bytes_to_df(lote_bytes))
+        except Exception:
+            lote_df = pd.DataFrame()
+
+    payload = {
+        "type": "batch",
+        "kind": "wav",
+        "count": len(wavs),
+        "created_at": time.time(),
+        "lote": {"excel_name": lote_name, "excel_bytes": lote_bytes, "df": lote_df},
+        "items": itens,
+        "timings": {"total_sec": float(elapsed)},
+    }
+
+    clear_batch()
+    st.session_state["batch_result_id"] = _store_put(payload)
+
+
+# ==============================
+# 🧠 Cabeçalho (cliente-first)
+# ==============================
+st.markdown(
+    """
+<div class="card">
+  <div class="kicker">SPIN Analyzer</div>
+  <div class="title">Relatório de conversas de vendas, pronto para Excel</div>
+  <p class="muted">Envie uma conversa ou áudio, e receba uma planilha clara com a análise baseada em <b>SPIN Selling</b>.</p>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+st.markdown("")
+
+
+# ==============================
+# 🧭 Sidebar (sem termos técnicos) — COM keys
+# ==============================
+with st.sidebar:
+    st.markdown("### Navegação")
+    nav_disabled = st.session_state.get("processing", False)
+
+    colA, colB = st.columns(2)
+    with colA:
+        if st.button("👤 Individual", use_container_width=True, disabled=nav_disabled, key="sb_btn_individual"):
+            if st.session_state["view"] != "single":
+                clear_batch()
+            st.session_state["view"] = "single"
+    with colB:
+        if st.button("📊 Gerencial", use_container_width=True, disabled=nav_disabled, key="sb_btn_gerencial"):
+            if st.session_state["view"] != "batch":
+                clear_single()
+            st.session_state["view"] = "batch"
+
+    st.markdown("---")
+
+    if service_ok():
+        st.success("Conectado ✅")
+    else:
+        st.warning("Indisponível no momento ⚠️")
+
+    st.markdown("---")
+
+    if st.button("🧹 Limpar resultados", use_container_width=True, disabled=nav_disabled, key="sb_btn_clear_all"):
+        clear_all()
+
+
+# ==============================
+# ✅ Tela: Individual
+# ==============================
+if st.session_state["view"] == "single":
+    st.markdown(
+        """
+<div class="card">
+  <div class="kicker">Avaliação individual</div>
+  <div class="title">Envie uma conversa ou um áudio</div>
+  <p class="muted">Você verá a planilha na tela e poderá baixar o Excel ao final.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    single_mode = st.radio(
+        "Como você quer enviar?",
+        options=["text", "wav"],
+        format_func=lambda x: "📝 Texto" if x == "text" else "🎧 Áudio (WAV)",
+        horizontal=True,
+        key="single_radio_mode",
+        disabled=st.session_state.get("processing", False),
+    )
+
+    if single_mode != st.session_state.get("single_mode"):
+        clear_single()
+        st.session_state["single_mode"] = single_mode
+
+    if single_mode == "text":
+        st.markdown(
+            "<div class='smallline'>Dica: inicie as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
+            unsafe_allow_html=True,
+        )
+        txt_input = st.text_area(
+            "Cole a conversa aqui",
+            height=260,
+            value="",
+            key="single_text_input",
+            placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n[VENDEDOR] ...",
+            disabled=st.session_state.get("processing", False),
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ Gerar relatório", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_run_text"):
+                clear_single()
+                run_single_text(txt_input)
+        with c2:
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_clear_text"):
+                clear_single()
+
+    else:
+        up_wav = st.file_uploader(
+            "Envie um arquivo WAV",
+            type=["wav"],
+            accept_multiple_files=False,
+            key="single_uploader_wav",
+            disabled=st.session_state.get("processing", False),
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ Gerar relatório", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_run_wav"):
+                if up_wav is None:
+                    st.warning("Envie um arquivo WAV para continuar.")
+                else:
+                    clear_single()
+                    run_single_wav(up_wav)
+        with c2:
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="single_btn_clear_wav"):
+                clear_single()
+
+
+# ==============================
+# ✅ Tela: Lote
+# ==============================
+else:
+    st.markdown(
+        """
+<div class="card">
+  <div class="kicker">Visão gerencial</div>
+  <div class="title">Analise vários itens de uma vez</div>
+  <p class="muted">Ao final, você terá um Excel consolidado e também uma planilha por item.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    batch_mode = st.radio(
+        "Como você quer enviar?",
+        options=["text", "wav"],
+        format_func=lambda x: "📝 Texto" if x == "text" else "🎧 Áudio (WAV)",
+        horizontal=True,
+        key="batch_radio_mode",
+        disabled=st.session_state.get("processing", False),
+    )
+
+    if batch_mode != st.session_state.get("batch_mode"):
+        clear_batch()
+        st.session_state["batch_mode"] = batch_mode
+
+    _batch_limits_card(batch_mode)
+
+    if batch_mode == "text":
+        st.markdown(
+            "<div class='smallline'>Dica: inicie as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
+            unsafe_allow_html=True,
+        )
+
+        up_txts = st.file_uploader(
+            "Envie arquivos de texto",
+            type=["txt"],
+            accept_multiple_files=True,
+            key="batch_uploader_text",
+            disabled=st.session_state.get("processing", False),
+        )
+
+        st.markdown(
+            "<div class='smallline'>Ou cole vários blocos (separe cada item com uma linha contendo <b>---</b>).</div>",
+            unsafe_allow_html=True,
+        )
+        multi_txt = st.text_area(
+            "Cole aqui",
+            height=220,
+            value="",
+            key="batch_text_input",
+            placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n---\n[VENDEDOR] ...\n[CLIENTE] ...",
+            disabled=st.session_state.get("processing", False),
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ Gerar relatório do lote", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_run_text"):
+                blocks = []
+                if multi_txt.strip():
+                    blocks = [b.strip() for b in multi_txt.split("\n---\n") if b.strip()]
+                clear_batch()
+                run_batch_text(up_txts or [], blocks)
+        with c2:
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_clear_text"):
+                clear_batch()
+
+    else:
+        up_wavs = st.file_uploader(
+            "Envie arquivos WAV",
+            type=["wav"],
+            accept_multiple_files=True,
+            key="batch_uploader_wav",
+            disabled=st.session_state.get("processing", False),
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ Gerar relatório do lote", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_run_wav"):
+                clear_batch()
+                run_batch_wav(up_wavs or [])
+        with c2:
+            if st.button("🧹 Limpar", use_container_width=True,
+                         disabled=st.session_state.get("processing", False),
+                         key="batch_btn_clear_wav"):
+                clear_batch()
+
+
+# ==============================
+# ✅ RESULTADO: Individual (somente Excel) — COM key no download
+# ==============================
+single_payload = _store_get(st.session_state.get("single_result_id", ""))
+if single_payload and single_payload.get("type") == "single":
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card">
+  <div class="kicker">Resultado</div>
+  <div class="title">Seu relatório está pronto</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    run_id = single_payload.get("run_id", "")
+    kind = single_payload.get("kind", "")
+    src = single_payload.get("source_name", "")
+
+    badges = []
+    badges.append("<span class='badge badge-ok'>🎧 Áudio</span>" if kind == "wav" else "<span class='badge badge-ok'>📝 Texto</span>")
+    if run_id:
+        badges.append(f"<span class='badge badge-brand'>Protocolo: {run_id}</span>")
+    if src:
+        badges.append(f"<span class='badge'>Origem: {Path(src).name}</span>")
+
+    st.markdown(
+        f"<div class='card-tight'><div class='badges'>{''.join(badges)}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    df = single_payload.get("df", pd.DataFrame())
+
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card-tight">
+  <div class="title">📊 Visualização</div>
+  <p class="muted">Consulta rápida da planilha. Para abrir completo, use o download abaixo.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.dataframe(df, use_container_width=True)
+
+    timings = single_payload.get("timings", {}) or {}
+    audio_sec = float(timings.get("audio_sec", 0) or 0)
+    total_sec = float(timings.get("total_sec", 0) or 0)
+
+    st.markdown("")
+    st.markdown(
+        f"""
+<div class="card-tight">
+  <div class="title">⏱️ Tempo</div>
+  <div class="badges" style="margin-top:8px;">
+    <span class="badge">Duração do áudio: <b>{human_time(audio_sec)}</b></span>
+    <span class="badge">Tempo de processamento: <b>{human_time(total_sec)}</b></span>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("")
+    st.markdown(
+        f"""
+<div class="card-tight">
+  <div class="title">📌 Observação</div>
+  <p class="muted">{summarize_excel(df)}</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    base = Path(single_payload.get("source_name") or "avaliacao").stem
+    excel_bytes = single_payload.get("excel_bytes", b"")
+
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card-tight">
+  <div class="title">📥 Download</div>
+  <p class="muted">Baixe a planilha para abrir no Excel.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
     st.download_button(
-        "📥 Baixar Excel",
-        data=lr.get("excel_bytes", b""),
+        "Baixar Excel",
+        data=excel_bytes,
         file_name=f"{base}_avaliacao.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
-        key=f"dl_excel_single_{base}",
+        key=f"dl_single_{single_payload.get('created_at',0)}_{base}",
     )
 
-    # Se veio de WAV e existir txt rotulado, deixa separado
-    if lr.get("kind") == "wav":
-        txt_rot = (lr.get("txt_rotulado") or "").strip()
-        if txt_rot:
-            st.download_button(
-                "📥 Baixar transcrição (TXT)",
-                data=txt_rot,
-                file_name=f"{base}_transcricao.txt",
-                use_container_width=True,
-                key=f"dl_txt_single_{base}",
-            )
-
 
 # ==============================
-# ✅ RESULTADO: Lote
-# - Excel do lote ABERTO (prioritário)
-# - Depois downloads (lote + por item)
+# ✅ RESULTADO: Lote (somente Excel) — COM keys nos downloads
 # ==============================
-br = st.session_state.get("batch_results")
-batch_lote = st.session_state.get("batch_lote")
+batch_payload = _store_get(st.session_state.get("batch_result_id", ""))
+if batch_payload and batch_payload.get("type") == "batch":
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card">
+  <div class="kicker">Resultado do lote</div>
+  <div class="title">Consolidado e planilhas individuais</div>
+  <p class="muted">Você pode visualizar o consolidado e baixar os arquivos quando quiser.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
-if br:
-    st.markdown("---")
-    st.markdown("## ✅ Resultados do lote")
+    lote = batch_payload.get("lote", {}) or {}
+    lote_df = lote.get("df", pd.DataFrame())
+    lote_bytes = lote.get("excel_bytes", b"")
 
-    # Excel do lote aberto primeiro
-    if batch_lote and isinstance(batch_lote.get("df"), pd.DataFrame) and not batch_lote["df"].empty:
-        st.markdown("### 📊 Planilha do lote (aberta)")
-        st.dataframe(batch_lote["df"], use_container_width=True)
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card-tight">
+  <div class="title">📊 Consolidado do lote</div>
+  <p class="muted">Visualização rápida do relatório consolidado.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    if isinstance(lote_df, pd.DataFrame) and not lote_df.empty:
+        st.dataframe(lote_df, use_container_width=True)
+    else:
+        st.info("Não foi possível abrir a visualização aqui. Use o download para abrir no Excel.")
 
-    render_downloads_explain_batch()
-
-    # Baixar Excel do lote
-    if batch_lote and batch_lote.get("excel_bytes"):
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card-tight">
+  <div class="title">📥 Download do lote</div>
+  <p class="muted">Baixe o consolidado para abrir no Excel.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    if lote_bytes:
         st.download_button(
-            "📥 Baixar Excel do lote",
-            data=batch_lote["excel_bytes"],
+            "Baixar Excel do lote",
+            data=lote_bytes,
             file_name=f"lote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key="dl_excel_lote",
+            key=f"dl_batch_lote_{batch_payload.get('created_at',0)}",
         )
+    else:
+        st.info("Arquivo consolidado não disponível para download.")
 
-    st.markdown("### 📁 Arquivos individuais")
-    for item in br:
+    items = batch_payload.get("items", []) or []
+    st.markdown("")
+    st.markdown(
+        """
+<div class="card-tight">
+  <div class="title">📁 Itens do lote</div>
+  <p class="muted">Abra um item para baixar a planilha individual.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    for item in items:
         idx = item.get("idx", 0)
         filename = str(item.get("filename") or f"item_{idx}")
         base = Path(filename).stem
 
-        with st.expander(f"📌 {idx}. {filename}", expanded=False):
-            # Excel individual
-            xb = item.get("excel_individual_bytes", b"")
+        with st.expander(f"{idx}. {filename}", expanded=False):
+            xb = item.get("excel_individual_bytes", b"") or b""
             if xb:
                 st.download_button(
-                    "📥 Baixar Excel (individual)",
+                    "Baixar Excel do item",
                     data=xb,
                     file_name=f"{base}_avaliacao.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
-                    key=f"dl_excel_item_{idx}_{base}",
+                    key=f"dl_batch_item_{batch_payload.get('created_at',0)}_{idx}_{base}",
                 )
             else:
-                st.warning("Excel individual não disponível para este item.")
-
-            # TXT rotulado (quando veio de áudio)
-            if item.get("kind") == "wav":
-                txt_rot = (item.get("txt_rotulado") or "").strip()
-                if txt_rot:
-                    st.download_button(
-                        "📥 Baixar transcrição (TXT)",
-                        data=txt_rot,
-                        file_name=f"{base}_transcricao.txt",
-                        use_container_width=True,
-                        key=f"dl_txt_item_{idx}_{base}",
-                    )
+                st.info("Planilha individual não disponível para este item.")
 
 
 # ==============================
-# 🧾 Rodapé (mantido)
+# 🧾 Rodapé
 # ==============================
-st.markdown("---")
+st.markdown("")
 st.markdown(
-    "<div style='text-align:center;color:#3A4A63;'>"
-    "SPIN Analyzer — Projeto Tele_IA 2026 | Desenvolvido por Paulo Coutinho"
-    "</div>",
+    "<div style='text-align:center;color:#4B5A74;font-weight:700;'>SPIN Analyzer — Projeto Tele_IA</div>",
     unsafe_allow_html=True,
 )
