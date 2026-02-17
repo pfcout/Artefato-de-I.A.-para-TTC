@@ -1,8 +1,8 @@
 # ===============================================
 # 🎧 SPIN Analyzer — Painel
 # ✅ Saída: SOMENTE PLANILHAS
-# ✅ Individual: download da planilha principal
-# ✅ Gerencial: download do lote e planilhas individuais
+# ✅ Individual: exibe planilha na tela e permite download
+# ✅ Gerencial: destaca o consolidado na tela e permite download do lote e individuais
 # ✅ UX: visual premium, mensagens curtas, foco no cliente
 # ✅ Progresso e tempo: atualizam durante o processamento
 # ✅ Sessão leve: nunca guarda ZIP nem mapas grandes
@@ -84,65 +84,129 @@ if not VPS_API_KEY:
 st.markdown(
     """
 <style>
-body { background:#FFFFFF; color:#0B1220; font-family:Segoe UI, Arial, sans-serif; }
-h1, h2, h3 { color:#0B63F3; }
-.block-container { padding-top: 1.2rem; padding-bottom: 2.0rem; }
+:root{
+  --bg:#FFFFFF;
+  --ink:#0B1220;
+  --muted:#3A4A63;
+  --line:rgba(199,214,245,0.95);
+  --line2:rgba(199,214,245,0.70);
+  --brand:#0B63F3;
+  --brand2:#164DD6;
+  --success:#29B37C;
+  --soft:#F6F9FF;
+}
+
+body { background:var(--bg); color:var(--ink); font-family:Segoe UI, Arial, sans-serif; }
+.block-container { padding-top: 1.1rem; padding-bottom: 2.0rem; max-width: 1500px; }
+h1,h2,h3 { color:var(--brand); letter-spacing:0.2px; }
+
+hr { border-color: var(--line2); }
 
 .card{
   background:#FFFFFF !important;
-  border:1px solid rgba(199,214,245,0.95) !important;
+  border:1px solid var(--line) !important;
   border-radius:18px;
   padding:18px;
   margin-bottom:14px;
   box-shadow:0 10px 28px rgba(11,18,32,0.08);
 }
-.smallmuted{ color:#3A4A63; font-weight:650; }
+
+.card.tight{ padding:14px 16px; }
+
+.smallmuted{ color:var(--muted); font-weight:650; }
 .mini{ font-size:0.92rem; }
 
 .hero{
   display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
   padding:18px; border-radius:22px;
   border:1px solid rgba(199,214,245,0.85);
-  background:linear-gradient(135deg, rgba(246,249,255,1) 0%, rgba(255,255,255,1) 55%, rgba(230,255,243,0.65) 100%);
+  background:linear-gradient(135deg, rgba(246,249,255,1) 0%, rgba(255,255,255,1) 55%, rgba(230,255,243,0.50) 100%);
   box-shadow:0 14px 34px rgba(11,18,32,0.10);
-  margin-top:8px; margin-bottom:14px;
+  margin-top:6px; margin-bottom:14px;
 }
 .hero .left{ display:flex; gap:12px; align-items:flex-start; }
 .hero .icon{
   width:42px; height:42px; border-radius:14px;
-  background:#E6FFF3; border:1px solid #29B37C;
+  background:#EAF2FF; border:1px solid rgba(11,99,243,0.25);
   display:flex; align-items:center; justify-content:center; font-size:22px;
 }
-.hero .title{ margin:0; font-size:1.45rem; font-weight:900; color:#0B1220; }
-.hero .subtitle{ margin:6px 0 0 0; color:#3A4A63; font-weight:650; }
+.hero .title{ margin:0; font-size:1.45rem; font-weight:900; color:var(--ink); }
+.hero .subtitle{ margin:6px 0 0 0; color:var(--muted); font-weight:650; max-width: 840px; }
 
 .pill-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end; }
 .pill{
   display:inline-flex; align-items:center; gap:8px;
   padding:8px 12px; border-radius:999px;
-  border:1px solid #AFC7F3; background:#F6F9FF;
-  color:#0B63F3; font-weight:800; font-size:0.92rem; line-height:1;
+  border:1px solid #AFC7F3; background:var(--soft);
+  color:var(--brand); font-weight:800; font-size:0.92rem; line-height:1;
 }
-.pill .dot{ width:9px; height:9px; border-radius:999px; background:#0B63F3; display:inline-block; }
-.pill.ok{ background:#E6FFF3; border-color:#29B37C; color:#0B6B4B; }
-.pill.ok .dot{ background:#29B37C; }
+.pill .dot{ width:9px; height:9px; border-radius:999px; background:var(--brand); display:inline-block; }
+.pill.ok{ background:#E6FFF3; border-color:var(--success); color:#0B6B4B; }
+.pill.ok .dot{ background:var(--success); }
 
 .status-card{
-  background:linear-gradient(135deg, #FFFFFF 0%, #F6F9FF 55%, #FFFFFF 100%) !important;
-  border:1px solid rgba(199,214,245,0.95) !important;
+  background:linear-gradient(135deg, #FFFFFF 0%, var(--soft) 55%, #FFFFFF 100%) !important;
+  border:1px solid var(--line) !important;
   border-radius:18px !important;
   padding:16px 18px !important;
   box-shadow:0 12px 30px rgba(11,18,32,0.08);
 }
-.status-title{ margin:0; font-size:1.10rem; font-weight:900; color:#0B1220; }
-.status-sub{ margin:6px 0 0 0; color:#3A4A63; font-weight:650; }
+.status-title{ margin:0; font-size:1.10rem; font-weight:900; color:var(--ink); }
+.status-sub{ margin:6px 0 0 0; color:var(--muted); font-weight:650; }
 
 .section-title{
   margin: 0 0 6px 0;
   font-size: 1.05rem;
   font-weight: 900;
-  color:#0B1220;
+  color:var(--ink);
 }
+
+.kpi{
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:12px 14px; border-radius:16px;
+  border:1px solid var(--line);
+  background:#FFFFFF;
+}
+.kpi .k{ color:var(--muted); font-weight:750; }
+.kpi .v{ color:var(--ink); font-weight:950; }
+
+.table-shell{
+  border:1px solid var(--line);
+  background:#FFFFFF;
+  border-radius:18px;
+  padding:12px;
+  box-shadow:0 10px 24px rgba(11,18,32,0.06);
+}
+
+.hint{
+  border-left:4px solid rgba(11,99,243,0.35);
+  background:rgba(246,249,255,0.65);
+  padding:10px 12px;
+  border-radius:12px;
+  color:var(--muted);
+  font-weight:650;
+}
+
+button[kind="primary"]{
+  border-radius:14px !important;
+}
+
+[data-testid="stDownloadButton"] button{
+  border-radius:14px !important;
+  padding:0.72rem 0.95rem !important;
+  font-weight:850 !important;
+}
+
+[data-testid="stButton"] button{
+  border-radius:14px !important;
+  padding:0.72rem 0.95rem !important;
+  font-weight:850 !important;
+}
+
+[data-testid="stDataFrame"]{
+  border-radius:14px;
+}
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -269,6 +333,142 @@ def format_excel_bytes(excel_bytes: bytes) -> bytes:
 
 
 # ==============================
+# 📊 Excel: leitura para visualização
+# ==============================
+def _excel_to_dataframe(excel_bytes: bytes):
+    if not excel_bytes:
+        return None
+
+    bio = io.BytesIO(excel_bytes)
+
+    # Preferência: pandas, por ser mais estável para leitura rápida
+    try:
+        import pandas as pd
+        df = pd.read_excel(bio, sheet_name=0, engine="openpyxl")
+        if df is None:
+            return None
+        # Garante colunas como texto para melhor leitura na tabela
+        df.columns = [str(c) for c in df.columns]
+        return df
+    except Exception:
+        pass
+
+    # Fallback: openpyxl sem pandas
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(bio, data_only=True, read_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return None
+        headers = [str(h) if h is not None else "" for h in rows[0]]
+        data = rows[1:]
+        # Evita depender de pandas, devolve estrutura simples
+        return {"headers": headers, "data": data}
+    except Exception:
+        return None
+
+
+def _infer_column_config_from_df(df, sample_rows: int = 180):
+    """
+    Heurísticas simples para dar prioridade de largura a colunas de texto.
+    Mantém consistência sem dependências externas.
+    """
+    col_cfg = {}
+    if df is None or not hasattr(df, "columns"):
+        return col_cfg
+
+    try:
+        sample = df.head(sample_rows)
+    except Exception:
+        sample = df
+
+    long_markers = ("texto", "feedback", "justific", "trecho", "observ", "coment", "resumo", "explic", "descricao", "mensagem")
+    id_markers = ("id", "codigo", "protocolo", "arquivo", "nome")
+
+    for c in list(df.columns):
+        c_str = str(c)
+        c_low = c_str.lower()
+
+        # Medida simples de tamanho com base no cabeçalho e amostra
+        try:
+            vals = sample[c].astype(str).fillna("").tolist()
+            max_len = max([len(c_str)] + [len(v) for v in vals[:sample_rows]])
+        except Exception:
+            max_len = len(c_str)
+
+        is_long = any(m in c_low for m in long_markers) or max_len >= 45
+        is_id = any(m in c_low for m in id_markers) and max_len <= 18
+        is_short = max_len <= 10
+
+        if is_long:
+            col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="large")
+        elif is_id:
+            col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="small")
+        elif is_short:
+            col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="small")
+        else:
+            col_cfg[c_str] = st.column_config.TextColumn(label=c_str, width="medium")
+
+    return col_cfg
+
+
+def render_excel_open(excel_bytes: bytes, title: str, subtitle: str, height: int = 620):
+    st.markdown(
+        f"""
+<div class="card">
+  <div class="section-title">{title}</div>
+  <div class="smallmuted">{subtitle}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    df_or = _excel_to_dataframe(excel_bytes)
+
+    # Fallback sem pandas
+    if isinstance(df_or, dict) and "headers" in df_or:
+        headers = df_or["headers"]
+        data = df_or["data"]
+        st.markdown("<div class='table-shell'>", unsafe_allow_html=True)
+        st.dataframe(
+            data,
+            use_container_width=True,
+            height=height,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    df = df_or
+    if df is None:
+        st.info("Não foi possível abrir a planilha para visualização. O download continua disponível.")
+        return
+
+    # Ajustes de leitura
+    try:
+        df = df.copy()
+        df.columns = [str(c) for c in df.columns]
+        # Evita colunas totalmente vazias no final, quando existir
+        empty_cols = [c for c in df.columns if df[c].isna().all()]
+        if empty_cols and len(empty_cols) < len(df.columns):
+            df = df.drop(columns=empty_cols)
+    except Exception:
+        pass
+
+    col_cfg = _infer_column_config_from_df(df)
+
+    st.markdown("<div class='table-shell'>", unsafe_allow_html=True)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        height=height,
+        column_config=col_cfg if col_cfg else None,
+        hide_index=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ==============================
 # 🌐 Saúde do serviço
 # ==============================
 def vps_health() -> bool:
@@ -336,7 +536,7 @@ def render_hero(title: str, subtitle: str, pills: List[str], icon: str):
 
 def show_friendly_error(title: str, err: Exception):
     st.error(title)
-    with st.expander("Ver detalhes", expanded=False):
+    with st.expander("Detalhes do diagnóstico", expanded=False):
         st.code(str(err))
 
 
@@ -368,21 +568,20 @@ def run_with_live_progress(task_fn, phase_labels: List[str]):
     th = threading.Thread(target=_worker, daemon=True)
     th.start()
 
-    # Progresso indeterminado elegante:
-    # sobe rápido até 35, depois vai “respirando” até 92 enquanto espera.
-    # Quando finalizar, fechamos em 100.
+    # Progresso indeterminado mais estável e um pouco mais lento
+    # Sobe até 30, depois avança gradualmente até 90 enquanto aguarda
     phase = 0
     last_phase_change = 0.0
 
     while not done_flag["ok"]:
         elapsed = time.time() - start
+
         timer.markdown(
-            f"<div class='smallmuted'>⏳ Tempo decorrido: <b>{human_time(elapsed)}</b></div>",
+            f"<div class='smallmuted'>Tempo decorrido <b>{human_time(elapsed)}</b></div>",
             unsafe_allow_html=True,
         )
 
-        # alterna mensagens suavemente sem ficar verboso
-        if elapsed - last_phase_change > 4.5 and phase < len(phase_labels) - 1:
+        if elapsed - last_phase_change > 5.2 and phase < len(phase_labels) - 1:
             phase += 1
             last_phase_change = elapsed
 
@@ -391,40 +590,39 @@ def run_with_live_progress(task_fn, phase_labels: List[str]):
             f"""
 <div class="status-card">
   <p class="status-title">{msg}</p>
-  <p class="status-sub">Aguarde</p>
+  <p class="status-sub">Acompanhe o andamento em tempo real</p>
 </div>
 """,
             unsafe_allow_html=True,
         )
 
-        # curva de progresso visual
-        if elapsed < 8:
-            prog = int(5 + (elapsed / 8) * 30)       # 5..35
+        if elapsed < 10:
+            prog = int(4 + (elapsed / 10) * 26)  # 4..30
         else:
-            # aproxima de 92 sem travar
-            prog = int(35 + (1 - (1 / (1 + (elapsed - 8) / 8))) * 57)  # 35..92
-        prog = max(0, min(92, prog))
+            # aproxima de 90 sem travar e com avanço mais suave
+            prog = int(30 + (1 - (1 / (1 + (elapsed - 10) / 11))) * 60)  # 30..90
+
+        prog = max(0, min(90, prog))
         pbar.progress(prog)
 
-        time.sleep(0.15)
+        time.sleep(0.22)
 
-    # finaliza visualmente
     elapsed = time.time() - start
     timer.markdown(
-        f"<div class='smallmuted'>⏳ Tempo decorrido: <b>{human_time(elapsed)}</b></div>",
+        f"<div class='smallmuted'>Tempo decorrido <b>{human_time(elapsed)}</b></div>",
         unsafe_allow_html=True,
     )
     status.markdown(
         """
 <div class="status-card">
-  <p class="status-title">Finalizando</p>
-  <p class="status-sub">Quase pronto</p>
+  <p class="status-title">Finalização e conferência</p>
+  <p class="status-sub">A planilha será exibida em seguida</p>
 </div>
 """,
         unsafe_allow_html=True,
     )
     pbar.progress(100)
-    time.sleep(0.25)
+    time.sleep(0.35)
 
     status.empty()
     timer.empty()
@@ -472,7 +670,7 @@ def run_single_text(content: str):
     try:
         (zip_bytes, hdr), elapsed = run_with_live_progress(
             task_fn=task,
-            phase_labels=["Preparando", "Processando", "Organizando resultado"],
+            phase_labels=["Preparação do material", "Avaliação em andamento", "Geração da planilha", "Organização dos resultados"],
         )
     except Exception as e:
         show_friendly_error("Não foi possível concluir a avaliação.", e)
@@ -482,7 +680,7 @@ def run_single_text(content: str):
     excels = pick_excels(files_map)
     if not excels:
         st.error("Recebi um retorno, mas não encontrei nenhuma planilha.")
-        with st.expander("Ver arquivos retornados", expanded=False):
+        with st.expander("Arquivos retornados", expanded=False):
             st.write(list(files_map.keys())[:200])
         return
 
@@ -512,7 +710,7 @@ def run_single_audio(wav_file):
     try:
         (zip_bytes, hdr), elapsed = run_with_live_progress(
             task_fn=task,
-            phase_labels=["Preparando", "Processando", "Organizando resultado"],
+            phase_labels=["Preparação do material", "Transcrição e avaliação", "Geração da planilha", "Organização dos resultados"],
         )
     except Exception as e:
         show_friendly_error("Não foi possível concluir a avaliação.", e)
@@ -522,7 +720,7 @@ def run_single_audio(wav_file):
     excels = pick_excels(files_map)
     if not excels:
         st.error("Recebi um retorno, mas não encontrei nenhuma planilha.")
-        with st.expander("Ver arquivos retornados", expanded=False):
+        with st.expander("Arquivos retornados", expanded=False):
             st.write(list(files_map.keys())[:200])
         return
 
@@ -586,7 +784,12 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
         try:
             (zip_bytes, hdr), _elapsed = run_with_live_progress(
                 task_fn=task,
-                phase_labels=[f"Preparando item {idx} de {total}", f"Processando item {idx} de {total}", "Organizando resultado"],
+                phase_labels=[
+                    f"Preparação do item {idx} de {total}",
+                    f"Avaliação do item {idx} de {total}",
+                    "Geração da planilha",
+                    "Organização dos resultados",
+                ],
             )
         except Exception as e:
             show_friendly_error(f"Não foi possível concluir o item {idx}.", e)
@@ -662,7 +865,12 @@ def run_batch_audio(wavs: List[Any]):
         try:
             (zip_bytes, hdr), _elapsed = run_with_live_progress(
                 task_fn=task,
-                phase_labels=[f"Preparando item {idx} de {total}", f"Processando item {idx} de {total}", "Organizando resultado"],
+                phase_labels=[
+                    f"Preparação do item {idx} de {total}",
+                    f"Transcrição e avaliação do item {idx} de {total}",
+                    "Geração da planilha",
+                    "Organização dos resultados",
+                ],
             )
         except Exception as e:
             show_friendly_error(f"Não foi possível concluir o item {idx}.", e)
@@ -712,9 +920,9 @@ def run_batch_audio(wavs: List[Any]):
 # ==============================
 render_hero(
     title="SPIN Analyzer",
-    subtitle="Avaliação em planilha pronta para acompanhamento e auditoria.",
+    subtitle="Avaliação em planilha pronta para acompanhamento executivo e auditoria.",
     pills=[
-        "<span class='pill ok'><span class='dot'></span>Planilha</span>",
+        "<span class='pill ok'><span class='dot'></span>Planilha em tela</span>",
         "<span class='pill'><span class='dot'></span>Individual e Gerencial</span>",
     ],
     icon="🎧",
@@ -769,10 +977,13 @@ if st.session_state["view"] == "single":
         st.session_state["_prev_single_mode"] = st.session_state["single_mode"]
 
     if st.session_state["single_mode"] == "Texto":
-        st.markdown("<div class='smallmuted mini'>Marque falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b> para melhor precisão.</div>",
+            unsafe_allow_html=True,
+        )
 
         content = st.text_area(
-            "Cole o conteúdo",
+            "Conteúdo para avaliação",
             height=260,
             value="",
             key="single_text",
@@ -781,7 +992,7 @@ if st.session_state["view"] == "single":
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Iniciar avaliação", use_container_width=True):
+            if st.button("Iniciar avaliação", use_container_width=True, type="primary"):
                 clear_single()
                 run_single_text(content)
 
@@ -791,15 +1002,20 @@ if st.session_state["view"] == "single":
 
     else:
         up = st.file_uploader(
-            "Envie um áudio",
+            "Áudio para avaliação",
             type=["wav"],
             accept_multiple_files=False,
             key="single_audio",
         )
 
+        st.markdown(
+            "<div class='hint'>Para melhor experiência, priorize gravações com boa qualidade de áudio.</div>",
+            unsafe_allow_html=True,
+        )
+
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Iniciar avaliação", use_container_width=True):
+            if st.button("Iniciar avaliação", use_container_width=True, type="primary"):
                 if up is None:
                     st.error("Envie um áudio para continuar.")
                 else:
@@ -827,7 +1043,7 @@ else:
     if st.session_state["batch_mode"] == "Texto":
         st.markdown(
             f"""
-<div class="card">
+<div class="card tight">
   <div class="section-title">Limites</div>
   <div class="smallmuted">Até {BATCH_TEXT_MAX_ENTRIES} entradas por vez</div>
 </div>
@@ -835,18 +1051,24 @@ else:
             unsafe_allow_html=True,
         )
 
-        st.markdown("<div class='smallmuted mini'>Marque falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b> para melhor precisão.</div>",
+            unsafe_allow_html=True,
+        )
 
         up_files = st.file_uploader(
-            "Envie arquivos",
+            "Arquivos de texto",
             type=["txt"],
             accept_multiple_files=True,
             key="batch_text_files",
         )
 
-        st.markdown("<div class='smallmuted mini'>Você pode colar vários blocos separados por uma linha com <b>---</b></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='smallmuted mini'>Você pode colar vários blocos separados por uma linha com <b>---</b></div>",
+            unsafe_allow_html=True,
+        )
         multi = st.text_area(
-            "Cole conteúdos",
+            "Conteúdos colados",
             height=220,
             value="",
             key="batch_text_area",
@@ -855,7 +1077,7 @@ else:
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Iniciar avaliação", use_container_width=True):
+            if st.button("Iniciar avaliação", use_container_width=True, type="primary"):
                 blocks = []
                 if multi.strip():
                     blocks = [b.strip() for b in multi.split("\n---\n") if b.strip()]
@@ -869,7 +1091,7 @@ else:
     else:
         st.markdown(
             f"""
-<div class="card">
+<div class="card tight">
   <div class="section-title">Limites</div>
   <div class="smallmuted">Até {BATCH_WAV_MAX_FILES} áudios por vez</div>
   <div class="smallmuted">Até 10 minutos por áudio</div>
@@ -879,15 +1101,20 @@ else:
         )
 
         up_wavs = st.file_uploader(
-            "Envie áudios",
+            "Áudios para avaliação",
             type=["wav"],
             accept_multiple_files=True,
             key="batch_audio_files",
         )
 
+        st.markdown(
+            "<div class='hint'>O consolidado será exibido como destaque ao final do processamento.</div>",
+            unsafe_allow_html=True,
+        )
+
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Iniciar avaliação", use_container_width=True):
+            if st.button("Iniciar avaliação", use_container_width=True, type="primary"):
                 clear_batch()
                 run_batch_audio(up_wavs or [])
 
@@ -912,16 +1139,45 @@ if lr and lr.get("excel_bytes"):
 
     render_hero(
         title="Resultado",
-        subtitle="Sua planilha está pronta para download.",
+        subtitle="A planilha está pronta e já está aberta abaixo para conferência.",
         pills=pills,
         icon="✅",
+    )
+
+    # KPIs discretos
+    t = (lr.get("timings") or {})
+    total_sec = float(t.get("total_sec") or 0.0)
+    audio_sec = float(t.get("audio_sec") or 0.0)
+    k1, k2, k3 = st.columns(3)
+    with k1:
+        st.markdown(
+            f"<div class='kpi'><div class='k'>Tempo total</div><div class='v'>{human_time(total_sec)}</div></div>",
+            unsafe_allow_html=True,
+        )
+    with k2:
+        st.markdown(
+            f"<div class='kpi'><div class='k'>Duração do áudio</div><div class='v'>{human_time(audio_sec) if audio_sec else '—'}</div></div>",
+            unsafe_allow_html=True,
+        )
+    with k3:
+        st.markdown(
+            f"<div class='kpi'><div class='k'>Arquivo</div><div class='v'>{Path(lr.get('filename') or '').name or '—'}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    # Planilha aberta na tela
+    render_excel_open(
+        excel_bytes=lr.get("excel_bytes", b""),
+        title="Planilha aberta",
+        subtitle="Visualização executiva com rolagem horizontal e vertical e prioridade para colunas de texto.",
+        height=650,
     )
 
     st.markdown(
         """
 <div class="card">
   <div class="section-title">Download</div>
-  <div class="smallmuted">Baixe a planilha e abra normalmente no Excel.</div>
+  <div class="smallmuted">Baixe a planilha para arquivamento, auditoria e compartilhamento interno.</div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -951,15 +1207,33 @@ if br:
 
     render_hero(
         title="Resultados do lote",
-        subtitle="Planilha consolidada e planilhas individuais para cada arquivo.",
+        subtitle="O consolidado é o destaque e fica aberto para leitura imediata. As planilhas individuais permanecem disponíveis para download.",
         pills=[
-            "<span class='pill ok'><span class='dot'></span>Consolidado</span>",
-            "<span class='pill'><span class='dot'></span>Individuais</span>",
+            "<span class='pill ok'><span class='dot'></span>Consolidado em destaque</span>",
+            "<span class='pill'><span class='dot'></span>Individuais para download</span>",
         ],
         icon="📊",
     )
 
     if batch_lote and batch_lote.get("excel_bytes"):
+        # Planilha do lote aberta primeiro
+        render_excel_open(
+            excel_bytes=batch_lote["excel_bytes"],
+            title="Planilha consolidada",
+            subtitle="Visualização ampla e legível para análise do lote.",
+            height=680,
+        )
+
+        st.markdown(
+            """
+<div class="card">
+  <div class="section-title">Download do consolidado</div>
+  <div class="smallmuted">Baixe a planilha do lote para registro e acompanhamento.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
         st.download_button(
             "Baixar planilha do lote",
             data=batch_lote["excel_bytes"],
@@ -968,8 +1242,19 @@ if br:
             use_container_width=True,
             key="dl_lote",
         )
+    else:
+        st.warning("O consolidado não ficou disponível neste retorno. As planilhas individuais continuam acessíveis.")
 
-    st.markdown("### Planilhas individuais")
+    st.markdown(
+        """
+<div class="card">
+  <div class="section-title">Planilhas individuais</div>
+  <div class="smallmuted">Use quando precisar auditar um item específico do lote.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
     for item in br:
         idx = item.get("idx", 0)
         filename = str(item.get("filename") or f"item_{idx}")
@@ -979,7 +1264,7 @@ if br:
             xb = item.get("excel_individual_bytes", b"")
             if xb:
                 st.download_button(
-                    "Baixar planilha",
+                    "Baixar planilha individual",
                     data=xb,
                     file_name=f"{base}_avaliacao.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -995,6 +1280,6 @@ if br:
 # ==============================
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#3A4A63;'>SPIN Analyzer — Projeto Tele IA 2026</div>",
+    "<div style='text-align:center;color:#3A4A63;font-weight:650;'>SPIN Analyzer — Projeto Tele IA 2026</div>",
     unsafe_allow_html=True,
 )
