@@ -1,0 +1,69 @@
+# ============================
+# COMMAND_CORE D_CHECK_V2.6 — SPIN TTC — PRESENÇA — DUPLO CHECK — TSV PURO
+# Objetivo: marcar PRESENÇA (0/1) de cada fase SPIN nas falas do VENDEDOR.
+# Saída: APENAS 6 linhas TSV (1 header + 5 linhas). Sem explicação. Sem Markdown.
+# ============================
+
+TRANSCRIÇÃO: {NOME_DO_ARQUIVO_ANEXADO}
+DATA (YYYY-MM-DD): {DATA_ANALISE}
+
+[ENTRADA]
+- Use APENAS falas do VENDEDOR quando houver marcação explícita.
+- Ignore falas do CLIENTE quando marcado.
+- Se não houver marcação explícita, avalie o texto como está (sem inferir papéis).
+
+[MARCADORES DE VENDEDOR ACEITOS]
+- [VENDEDOR]
+- VENDEDOR:
+- AGENTE:
+- ATENDENTE:
+
+[TAREFA — PRESENÇA]
+Para cada fase P0..P4:
+- CHECK_01 = 1 se existir pelo menos UM trecho CLARO do vendedor que corresponde à fase; senão 0.
+- CHECK_02 = repetir do zero (segunda leitura independente).
+- RESULTADO = sua consolidação final (0/1). Preencha sempre com 0 ou 1.
+
+IMPORTANTE:
+- Isto é PRESENÇA (não “fala pura”): uma fala pode conter mais de uma fase.
+- Não invente contexto. Não inferir intenção. Use apenas evidência explícita no texto.
+
+[SPIN — DEFINIÇÕES (PRESENÇA) + EXEMPLOS CURTOS]
+
+P0_abertura (início/abertura):
+- Saudação, apresentação, ou pedido de tempo/permissão para falar.
+Exemplos: "Olá, tudo bem?", "Bom dia", "Meu nome é...", "Posso falar rapidinho?"
+
+P1_situation (situação atual — factual/neutro):
+- Perguntas neutras sobre como é hoje (processo, rotina, volume, frequência, ferramenta).
+Exemplos: "Como funciona hoje...?", "Quantos pedidos por dia?", "Vocês usam planilha ou sistema?"
+
+P2_problem (problema/dor — sem consequência):
+- Perguntas/declarações explícitas sobre dificuldade, erro, falha, atraso, dor, ineficiência.
+Exemplos: "Vocês têm enfrentado erros...?", "Tem algum problema com...?", "Isso dá falha com frequência?"
+
+P3_implication (impacto/consequência do problema):
+- Consequência/custo/risco/perda/atraso/retrabalho explicitamente como efeito do problema.
+Exemplos: "Isso gera retrabalho?", "Acaba atrasando entregas?", "Tem custo extra/multa/perde cliente por isso?"
+
+P4_need_payoff (benefício ao resolver / cenário ideal):
+- Benefício/ganho/melhoria explícita ao resolver (resultado positivo).
+Exemplos: "Se automatizar, reduz erros e ganha tempo", "Melhora produtividade/eficiência", "Evita retrabalho"
+
+[ANTI-FALSO-POSITIVO (P4) — SÓ EXEMPLOS]
+NÃO é P4 por si só (sem benefício explícito):
+"vou enviar material", "vamos agendar", "te mando proposta", "marcar uma conversa"
+
+[ANTI-TEMPLATE / FORMATO — PROIBIDO]
+- Proibido Markdown ou pipes “|”.
+- Proibido bullets, títulos extras, “observações” ou qualquer texto fora da tabela.
+- Proibido escrever “0 ou 1”, “{0/1}”, “exemplo”, “a ser preenchida”.
+- A resposta deve conter SOMENTE as 6 linhas TSV abaixo.
+
+[SAÍDA — TSV EXATO]
+SPIN SELLING	CHECK_01	CHECK_02	RESULTADO
+P0_abertura	0	0	0
+P1_situation	0	0	0
+P2_problem	0	0	0
+P3_implication	0	0	0
+P4_need_payoff	0	0	0
