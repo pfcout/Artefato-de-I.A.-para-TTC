@@ -1,0 +1,901 @@
+# benchmark_expected_100 (gerado dos TSV)
+
+## teste_01
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_02
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_03
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_04
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_05
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_06
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_07
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_08
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_09
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_10
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_11
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_12
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_13
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_14
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_15
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_16
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_17
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_18
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_19
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_20
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_21
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_22
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_23
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_24
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_25
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_26
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_27
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_28
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_29
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_30
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_31
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_32
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_33
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_34
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_35
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_36
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_37
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_38
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_39
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_40
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_41
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_42
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_43
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_44
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_45
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_46
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_47
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_48
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_49
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_50
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_51
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_52
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_53
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_54
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_55
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_56
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_57
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_58
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_59
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_60
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_61
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_62
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_63
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_64
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_65
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_66
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_67
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_68
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_69
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_70
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_71
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_72
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_73
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_74
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_75
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_76
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_77
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_78
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_79
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_80
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_81
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_82
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_83
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_84
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_85
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_86
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_87
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_88
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_89
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_90
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_91
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_92
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_93
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_94
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_95
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_96
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_97
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 1 | 1 |
+| P2_problem | 0 | 0 |
+| P3_implication | 0 | 0 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_98
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 0 | 0 |
+
+## teste_99
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 0 | 0 |
+| P1_situation | 0 | 0 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
+
+## teste_100
+| SPIN SELLING | CHECK_01 | CHECK_02 |
+|---|---:|---:|
+| P0_abertura | 1 | 1 |
+| P1_situation | 1 | 1 |
+| P2_problem | 1 | 1 |
+| P3_implication | 1 | 1 |
+| P4_need_payoff | 1 | 1 |
