@@ -1,206 +1,208 @@
 #!/usr/bin/env python3
-# 02_zeroshot.py — v7.11+cli (Tele_IA / SPIN Analyzer)
-#
-# Objetivo:
-#   - Ler .txt do 01 (ou benchmark via SPIN_IN_DIR / --input_dir)
-#   - Rodar SPIN via Ollama usando Command Core
-#   - Gerar Excel:
-#       SPIN SELLING | CHECK_01 | CHECK_02 | RESULTADO TEXTO
-#
-# Regras:
-#   - Sem regrinhas para decidir SPIN: LLM decide.
-#   - Nosso código só analisa o que o LLM respondeu.
-#   - RESULTADO TEXTO:
-#       IDÊNTICO se CHECK_01 == CHECK_02, senão DIFERENTE.
-#
-# Toggle:
-#   - SPIN_VENDOR_ONLY=1 (default) -> só vendedor
-#   - SPIN_VENDOR_ONLY=0 -> inclui vendedor+cliente
-#
-# Env Vars importantes:
-#   - SPIN_IN_DIR=/caminho/para/txts
-#   - SPIN_OUT_DIR=/caminho/saida/excels
-#   - SPIN_COMMAND_CORE_FILE=/caminho/absoluto/ou/relativo/ao/assets
-#   - SPIN_FALLBACK_CORE_FILE=/caminho do prompt fallback (quando vier tudo 0/0)
-#
-# ===========================================================
+# -*- coding: utf-8 -*-
+"""
+02_zeroshot.py — SPIN Analyzer (LOCAL) — v8.1 (Windows-friendly)
 
+TXT -> Ollama -> TSV (rigoroso) -> Excel individual.
+
+Arquivos:
+- Entrada (default): arquivos_transcritos/txt (recursivo por padrão)
+- Saída (default): saida_excel
+- Prompts (sempre lidos do arquivo):
+  - assets/Command_Core_D_Check_V2_6.txt
+- Cache SQLite: cache_spin02/cache.db
+- Arquivamento de TXT processado: cachebd/ (move após processar)
+
+CLI:
+--in_dir, --out_dir, --pattern, --recursive, --workers, --force, --quiet
+
+Exit code:
+0 se tudo OK
+1 se houve falha em algum arquivo
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import logging
 import os
 import re
+import shutil
+import sqlite3
 import sys
-import json
 import time
-import hashlib
-import socket
-import argparse
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 from urllib import request
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
 
-from openpyxl import Workbook, load_workbook
-import pandas as pd
 
-# --------------------------
-# PATH FIX
-# --------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
+from openpyxl import Workbook
 
-# --------------------------
-# DEFAULTS (podem ser sobrescritos no main via CLI)
-# --------------------------
-DEFAULT_IN_DIR = os.path.join(ROOT_DIR, "arquivos_transcritos", "txt")
-DEFAULT_OUT_DIR = os.path.join(ROOT_DIR, "saida_spin_excel")
 
-IN_DIR = os.getenv("SPIN_IN_DIR", DEFAULT_IN_DIR)
-OUT_DIR = (os.getenv("SPIN_OUT_DIR", "") or "").strip() or DEFAULT_OUT_DIR
+# ============================================================
+# Constantes de Fases / Formato
+# ============================================================
 
-SPIN_ONLY_FILE = (os.getenv("SPIN_ONLY_FILE", "") or "").strip()
-WRITE_BATCH_FILE = (os.getenv("SPIN_WRITE_BATCH_FILE", "1") or "").strip() != "0"
+PHASES: List[str] = [
+    "P0_abertura",
+    "P1_situation",
+    "P2_problem",
+    "P3_implication",
+    "P4_need_payoff",
+]
 
-SPIN_MAX_LINES_TOTAL = int(os.getenv("SPIN_MAX_LINES_TOTAL", "2000"))
-SPIN_MAX_CHARS_TOTAL = int(os.getenv("SPIN_MAX_CHARS_TOTAL", "60000"))
+TSV_HEADER = "SPIN SELLING\tCHECK_01\tCHECK_02"
 
-SPIN_VENDOR_ONLY = (os.getenv("SPIN_VENDOR_ONLY", "1") or "1").strip() != "0"
+TAG_RE = re.compile(
+    r"^\s*(\[(VENDEDOR|CLIENTE)\]|(VENDEDOR|CLIENTE|AGENTE|ATENDENTE)\s*:)\s*",
+    re.IGNORECASE,
+)
 
-# --------------------------
-# OLLAMA
-# --------------------------
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
-OLLAMA_TIMEOUT_S = int(os.getenv("OLLAMA_TIMEOUT_S", "900"))
-OLLAMA_TIMEOUT_RETRIES = int(os.getenv("OLLAMA_TIMEOUT_RETRIES", "1"))
 
-OLLAMA_OPTIONS = {
-    "temperature": float(os.getenv("OLLAMA_TEMPERATURE", "0")),
-    "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "2048")),
-    "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "120")),
-    "top_p": float(os.getenv("OLLAMA_TOP_P", "0.9")),
-    "repeat_penalty": float(os.getenv("OLLAMA_REPEAT_PENALTY", "1.06")),
-    "stop": ["```", "</s>"],
-}
+# ============================================================
+# Paths (projeto)
+# ============================================================
 
-PHASES = ["P0_abertura", "P1_situation", "P2_problem", "P3_implication", "P4_need_payoff"]
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent
 
-# --------------------------
-# COMMAND CORE
-# --------------------------
-ASSETS_DIR = os.path.join(ROOT_DIR, "assets")
-COMMAND_CORE_FILE = (os.getenv("SPIN_COMMAND_CORE_FILE", "") or "").strip()
+DEFAULT_IN_DIR = ROOT_DIR / "arquivos_transcritos" / "txt"
+DEFAULT_OUT_DIR = ROOT_DIR / "saida_excel"
 
-def _resolve_command_core_path(cmd: str) -> str:
-    """
-    Aceita:
-      - caminho absoluto: /root/.../Prompt_01.txt
-      - caminho relativo ao assets: prompts_spin/Prompt_01.txt
-      - nome de arquivo dentro de assets: Command_Core_D_Check_V2_6.txt
-    """
-    if not cmd:
-        return ""
+ASSETS_DIR = ROOT_DIR / "assets"
+PROMPT_MAIN_PATH = ASSETS_DIR / "Command_Core_D_Check_V2_6.txt"
+PROMPT_ALT_PATH = ASSETS_DIR / "Command_Core_D_Check_V2_6_FALLBACK.txt"
 
-    # absoluto
-    if os.path.isabs(cmd) and os.path.exists(cmd):
-        return cmd
+LOG_DIR = ROOT_DIR / "logs"
+LOG_FILE = LOG_DIR / "spin02.log"
 
-    # relativo: tenta dentro de assets/
-    p1 = os.path.join(ASSETS_DIR, cmd)
-    if os.path.exists(p1):
-        return p1
+CACHE_DIR_DEFAULT = ROOT_DIR / "cache_spin02"
+CACHE_DB_PATH = CACHE_DIR_DEFAULT / "cache.db"
 
-    # se veio só nome, tenta direto em assets
-    p2 = os.path.join(ASSETS_DIR, os.path.basename(cmd))
-    if os.path.exists(p2):
-        return p2
+ARCHIVE_DIR = ROOT_DIR / "cachebd"  # pasta pedida para mover os TXT já processados
 
-    return ""
 
-def load_command_core() -> str:
-    # 1) se setar SPIN_COMMAND_CORE_FILE, respeita
-    if COMMAND_CORE_FILE:
-        p = _resolve_command_core_path(COMMAND_CORE_FILE)
-        if p and os.path.exists(p):
-            with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                txt = (f.read() or "").strip()
-                if txt:
-                    return txt
-        raise RuntimeError(f"SPIN_COMMAND_CORE_FILE setado mas não encontrado: {COMMAND_CORE_FILE}")
+# ============================================================
+# Config (env)
+# ============================================================
 
-    # 2) fallback
-    for p in [
-        os.path.join(ASSETS_DIR, "Command_Core_D_Check_V3.txt"),
-        os.path.join(ASSETS_DIR, "Command_Core_D_Check_V2.txt"),
-        os.path.join(ASSETS_DIR, "Command_Core_D_Check.txt"),
-        os.path.join(ASSETS_DIR, "command_core.txt"),
-    ]:
-        if os.path.exists(p):
-            with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                txt = (f.read() or "").strip()
-                if txt:
-                    return txt
+def _env_str(name: str, default: str) -> str:
+    v = os.getenv(name, "").strip()
+    return v if v else default
 
-    return ""
+def _env_int(name: str, default: int) -> int:
+    v = os.getenv(name, "").strip()
+    if not v:
+        return default
+    try:
+        return int(v)
+    except Exception:
+        return default
 
-COMMAND_CORE_RAW = load_command_core()
-if not COMMAND_CORE_RAW:
-    raise RuntimeError("Command Core não encontrado em assets/. Coloque V3 (recomendado) ou set SPIN_COMMAND_CORE_FILE.")
+def _env_float(name: str, default: float) -> float:
+    v = os.getenv(name, "").strip()
+    if not v:
+        return default
+    try:
+        return float(v)
+    except Exception:
+        return default
 
-# --------------------------
-# FALLBACK CORE (para casos all-zero / template-copy)
-# --------------------------
-FALLBACK_CORE_FILE = (os.getenv("SPIN_FALLBACK_CORE_FILE", "") or "").strip()
-if not FALLBACK_CORE_FILE:
-    # default: você já criou esse arquivo
-    FALLBACK_CORE_FILE = os.path.join(ASSETS_DIR, "Command_Core_D_Check_V2_6_FALLBACK.txt")
 
-def load_fallback_core() -> str:
-    p = _resolve_command_core_path(FALLBACK_CORE_FILE)
-    if p and os.path.exists(p):
-        with open(p, "r", encoding="utf-8", errors="ignore") as f:
-            return (f.read() or "").strip()
-    return ""
+OLLAMA_URL = _env_str("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
+OLLAMA_MODEL = _env_str("OLLAMA_MODEL", "qwen2.5:14b-instruct-q4_K_M")
+OLLAMA_TIMEOUT_S = _env_int("OLLAMA_TIMEOUT_S", 900)
+OLLAMA_TIMEOUT_RETRIES = _env_int("OLLAMA_TIMEOUT_RETRIES", 1)
+OLLAMA_KEEP_ALIVE = _env_str("OLLAMA_KEEP_ALIVE", "30m")
 
-FALLBACK_CORE_RAW = load_fallback_core()
+OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.0)
+OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 2048)
+OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 220)
+OLLAMA_TOP_P = _env_float("OLLAMA_TOP_P", 0.9)
+OLLAMA_REPEAT_PENALTY = _env_float("OLLAMA_REPEAT_PENALTY", 1.06)
 
-# --------------------------
-# CACHE (inicializa depois de OUT_DIR ser definitivo)
-# --------------------------
-CACHE_DIR = None  # setado no main
+SPIN_VENDOR_ONLY = (_env_str("SPIN_VENDOR_ONLY", "1") != "0")
+SPIN_MAX_LINES_TOTAL = _env_int("SPIN_MAX_LINES_TOTAL", 260)
+SPIN_MAX_CHARS_TOTAL = _env_int("SPIN_MAX_CHARS_TOTAL", 12000)
+
+
+# ============================================================
+# Logging
+# ============================================================
+
+def setup_logging(quiet: bool) -> logging.Logger:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    logger = logging.getLogger("spin02")
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+
+    fmt_file = logging.Formatter(
+        fmt="%(asctime)s | %(levelname)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    fh = logging.FileHandler(str(LOG_FILE), encoding="utf-8")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(fmt_file)
+    logger.addHandler(fh)
+
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setLevel(logging.ERROR if quiet else logging.INFO)
+    ch.setFormatter(logging.Formatter(fmt="%(message)s"))
+    logger.addHandler(ch)
+
+    return logger
+
+
+# ============================================================
+# Util
+# ============================================================
 
 def sha256_text(s: str) -> str:
-    s = "" if s is None else str(s)
-    return hashlib.sha256(s.encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha256((s or "").encode("utf-8", errors="ignore")).hexdigest()
 
-def cache_path(key: str) -> str:
-    return os.path.join(CACHE_DIR, f"{key}.json")
+def read_text_file(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="ignore")
 
-def cache_get(key: str):
-    p = cache_path(key)
-    if os.path.exists(p):
-        try:
-            with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                return json.load(f)
-        except Exception:
-            return None
-    return None
+def now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
-def cache_set(key: str, obj: dict):
-    try:
-        with open(cache_path(key), "w", encoding="utf-8") as f:
-            json.dump(obj, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+def fmt_hms(seconds: float) -> str:
+    seconds = max(0.0, float(seconds))
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}h {m:02d}m {s:02d}s"
+    if m > 0:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
 
-# --------------------------
-# TEXTO
-# --------------------------
-TAG_RE = re.compile(r"^\s*(\[(VENDEDOR|CLIENTE)\]|(VENDEDOR|CLIENTE|AGENTE|ATENDENTE)\s*:)\s*", re.IGNORECASE)
+def _to01(x) -> str:
+    x = "" if x is None else str(x).strip()
+    return "1" if x in ("1", "1.0", "true", "True") else "0"
 
-def read_txt(path: str) -> str:
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        return str(f.read() or "")
+def resultado_texto(c1: str, c2: str) -> str:
+    return "IDÊNTICO" if _to01(c1) == _to01(c2) else "DIFERENTE"
+
+def is_all_zero_rows(rows: Dict[str, Dict[str, str]]) -> bool:
+    for ph in PHASES:
+        c1 = _to01(rows.get(ph, {}).get("check1", "0"))
+        c2 = _to01(rows.get(ph, {}).get("check2", "0"))
+        if c1 == "1" or c2 == "1":
+            return False
+    return True
+
+
+# ============================================================
+# Texto / vendor-only
+# ============================================================
 
 def limit_text(txt: str) -> str:
     txt = "" if txt is None else str(txt)
@@ -216,13 +218,14 @@ def extract_vendor_only(txt: str) -> str:
     txt = limit_text(txt)
     lines = txt.splitlines()
 
-    vendor_lines = []
+    vendor_lines: List[str] = []
     saw_vendor = False
 
     for line in lines:
         s = (line or "").strip()
         if not s:
             continue
+
         m = TAG_RE.match(s)
         if not m:
             continue
@@ -241,43 +244,58 @@ def extract_vendor_only(txt: str) -> str:
 
     return txt.strip()
 
-# --------------------------
-# PROMPT (core + anexo)
-# --------------------------
+
+# ============================================================
+# Prompt (sempre lido do arquivo)
+# ============================================================
+
+def load_prompt_file(path: Path) -> str:
+    if not path.exists():
+        raise FileNotFoundError(f"Prompt não encontrado: {path}")
+    txt = read_text_file(path).strip()
+    if not txt:
+        raise RuntimeError(f"Prompt vazio: {path}")
+    return txt
+
 def pack_command_core(core: str, filename: str) -> str:
-    core = "" if core is None else str(core)
     today = datetime.now().strftime("%Y-%m-%d")
+    core = (core or "")
     core = core.replace("{NOME_DO_ARQUIVO_ANEXADO}", filename)
     core = core.replace("{DATA_ANALISE}", today)
-
-    max_chars = int(os.getenv("SPIN_CORE_MAX_CHARS", "18000"))
-    if len(core) > max_chars:
-        core = core[:max_chars].rstrip()
-    return core
+    return core.strip()
 
 def build_prompt(core_packed: str, text_for_llm: str) -> str:
     text_for_llm = limit_text(text_for_llm)
-    return f"""{core_packed}
+    return (
+        f"{core_packed}\n\n"
+        f"[ANEXO — TRANSCRIÇÃO]\n"
+        f"{text_for_llm}\n\n"
+        f"[LEMBRETE FINAL — OBRIGATÓRIO]\n"
+        f"Responda SOMENTE com as 6 linhas TSV no formato pedido (1 header + 5 linhas). "
+        f"Não escreva explicações, títulos, listas ou texto extra."
+    )
 
-[ANEXO — TRANSCRIÇÃO]
-{text_for_llm}
 
-[LEMBRETE FINAL — OBRIGATÓRIO]
-Responda SOMENTE com as 6 linhas TSV no formato pedido (1 header + 5 linhas).
-Não escreva explicações, títulos, listas ou texto extra.
-"""
+# ============================================================
+# Ollama HTTP
+# ============================================================
 
-# --------------------------
-# OLLAMA CALL
-# --------------------------
-def ollama_generate(prompt: str, timeout_s: int) -> str:
+def call_ollama(prompt: str, timeout_s: int, logger: logging.Logger) -> str:
     payload = {
         "model": OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
         "keep_alive": OLLAMA_KEEP_ALIVE,
-        "options": OLLAMA_OPTIONS,
+        "options": {
+            "temperature": OLLAMA_TEMPERATURE,
+            "num_ctx": OLLAMA_NUM_CTX,
+            "num_predict": OLLAMA_NUM_PREDICT,
+            "top_p": OLLAMA_TOP_P,
+            "repeat_penalty": OLLAMA_REPEAT_PENALTY,
+            "stop": ["```", "</s>"],
+        },
     }
+
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(
         OLLAMA_URL,
@@ -286,152 +304,75 @@ def ollama_generate(prompt: str, timeout_s: int) -> str:
         method="POST",
     )
 
+    last_err: Optional[Exception] = None
     for attempt in range(OLLAMA_TIMEOUT_RETRIES + 1):
         try:
             with request.urlopen(req, timeout=timeout_s) as resp:
                 raw = resp.read().decode("utf-8", errors="ignore")
-                obj = json.loads(raw)
-                return (obj.get("response") or "").strip()
-        except (socket.timeout, TimeoutError) as e:
+            obj = json.loads(raw)
+            return (obj.get("response") or "").strip()
+        except Exception as e:
+            last_err = e
             if attempt < OLLAMA_TIMEOUT_RETRIES:
                 time.sleep(2 + attempt * 2)
                 continue
-            raise RuntimeError(f"timed out (timeout={timeout_s}s)") from e
-        except (HTTPError, URLError) as e:
-            raise RuntimeError(f"ollama api error: {e}") from e
-        except Exception as e:
-            raise RuntimeError(str(e)) from e
 
-# --------------------------
-# PARSE ROBUSTO (sem decidir SPIN)
-# --------------------------
-def _to01(x) -> str:
-    x = "" if x is None else str(x)
-    x = x.strip()
-    if x in ("1", "1.0", "true", "True"):
-        return "1"
-    return "0"
+    msg = str(last_err) if last_err else "unknown error"
+    logger.error(f"Erro no Ollama: {msg}")
+    raise RuntimeError(msg)
 
-def normalize_markdown_table_to_lines(out: str) -> list[str]:
-    lines = []
-    for raw in (out or "").splitlines():
-        s = (raw or "").strip()
-        if not s:
-            continue
 
-        # markdown table
-        if s.startswith("|") and s.endswith("|"):
-            if re.match(r"^\|\s*-+\s*\|", s):
-                continue
-            parts = [p.strip() for p in s.strip("|").split("|")]
-            if not parts:
-                continue
-            if parts[0].lower() == "spin selling":
-                continue
-            if parts[0] in PHASES:
-                nums = []
-                for p in parts[1:]:
-                    p = (p or "").strip()
-                    if p in ("0", "1", "0.0", "1.0", "true", "false", "True", "False"):
-                        nums.append(_to01(p))
-                if len(nums) >= 2:
-                    # mantém tolerância: se vier 2 ou 3 cols, guarda as 2 primeiras
-                    lines.append(parts[0] + "\t" + "\t".join(nums[:3]))
-            continue
+# ============================================================
+# TSV Validation / Parse (rigoroso)
+# ============================================================
 
-        lines.append(s)
-    return lines
+@dataclass
+class TSVResult:
+    ok: bool
+    error: str
+    raw_tsv: str
+    table_rows: Dict[str, Dict[str, str]]
 
-def parse_table(output: str) -> dict:
-    output = "" if output is None else str(output)
-    rows = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
+def validate_tsv(tsv: str) -> Tuple[bool, str]:
+    if not tsv or not tsv.strip():
+        return False, "empty_response"
 
-    lines = normalize_markdown_table_to_lines(output)
-
-    for line in lines:
-        s = (line or "").strip()
-        for ph in PHASES:
-            if s.startswith(ph):
-                parts = s.split("\t")
-                if len(parts) < 3:
-                    parts = re.split(r"\s{2,}", s)
-                if len(parts) < 3:
-                    parts = re.split(r"\s+", s)
-
-                vals = []
-                for p in parts[1:]:
-                    p = (p or "").strip()
-                    if p in ("0", "1", "0.0", "1.0", "true", "false", "True", "False"):
-                        vals.append(_to01(p))
-                    if len(vals) == 2:
-                        break
-
-                if len(vals) == 2:
-                    rows[ph]["check1"], rows[ph]["check2"] = vals
-                break
-
-    return rows
-
-def is_valid_tsv(out: str) -> bool:
-    if not out:
-        return False
-    lines = [l for l in (out or "").splitlines() if l.strip()]
+    lines = [ln.strip() for ln in tsv.splitlines() if ln.strip()]
     if len(lines) != 6:
-        return False
-    if not lines[0].startswith("SPIN SELLING"):
-        return False
-    phases = ["P0_abertura", "P1_situation", "P2_problem", "P3_implication", "P4_need_payoff"]
-    for ph, line in zip(phases, lines[1:]):
-        if not line.startswith(ph + "\t"):
-            return False
-    return True
+        return False, f"invalid_line_count:{len(lines)}"
 
-def is_all_zero(table_rows: dict) -> bool:
-    for ph in PHASES:
-        c1 = _to01(table_rows.get(ph, {}).get("check1", "0"))
-        c2 = _to01(table_rows.get(ph, {}).get("check2", "0"))
-        if c1 == "1" or c2 == "1":
-            return False
-    return True
+    if lines[0] != TSV_HEADER:
+        return False, "invalid_header"
 
-def read_table_rows_from_excel(xlsx_path: str) -> dict:
+    for i, ph in enumerate(PHASES, start=1):
+        parts = lines[i].split("\t")
+        if len(parts) != 3:
+            return False, f"invalid_cols:{ph}:{len(parts)}"
+        if parts[0] != ph:
+            return False, f"invalid_phase:{i}:{parts[0]}"
+        c1, c2 = parts[1].strip(), parts[2].strip()
+        if c1 not in ("0", "1") or c2 not in ("0", "1"):
+            return False, f"invalid_values:{ph}:{c1},{c2}"
+
+    return True, ""
+
+def parse_tsv(tsv: str) -> Dict[str, Dict[str, str]]:
+    lines = [ln.strip() for ln in tsv.splitlines() if ln.strip()]
     rows = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
-    wb = load_workbook(xlsx_path)
-    ws = wb.active
-    for r in range(1, ws.max_row + 1):
-        a = ws.cell(r, 1).value
-        if a in PHASES:
-            b = ws.cell(r, 2).value
-            c = ws.cell(r, 3).value
-            rows[a]["check1"] = _to01(b)
-            rows[a]["check2"] = _to01(c)
+    for i, ph in enumerate(PHASES, start=1):
+        parts = lines[i].split("\t")
+        rows[ph]["check1"] = parts[1].strip()
+        rows[ph]["check2"] = parts[2].strip()
     return rows
 
-def dump_debug(out_dir: str, in_path: str, kind: str, content: str):
-    try:
-        _dbg_dir = os.path.join(out_dir, "_debug_ollama")
-        os.makedirs(_dbg_dir, exist_ok=True)
-        _base = os.path.splitext(os.path.basename(in_path))[0]
-        with open(os.path.join(_dbg_dir, f"{_base}.{kind}.txt"), "w", encoding="utf-8") as fp:
-            fp.write(content or "")
-    except Exception as _e:
-        print("[warn] dump debug falhou:", _e)
 
-def resultado_texto(c1: str, c2: str) -> str:
-    return "IDÊNTICO" if _to01(c1) == _to01(c2) else "DIFERENTE"
+# ============================================================
+# Excel
+# ============================================================
 
-def format_spin_summary(table_rows: dict) -> str:
-    parts = []
-    for ph in PHASES:
-        c1 = table_rows.get(ph, {}).get("check1", "0")
-        c2 = table_rows.get(ph, {}).get("check2", "0")
-        parts.append(f"{ph}=({_to01(c1)}/{_to01(c2)})")
-    return " ".join(parts)
+def write_excel(out_xlsx: Path, transcript_title: str, table_rows: Dict[str, Dict[str, str]]) -> None:
+    out_xlsx.parent.mkdir(parents=True, exist_ok=True)
 
-# --------------------------
-# EXCEL (sem RESULTADO numérico)
-# --------------------------
-def write_excel_like_model(out_xlsx: str, transcript_title: str, table_rows: dict):
     wb = Workbook()
     ws = wb.active
     ws.title = "Planilha1"
@@ -442,6 +383,7 @@ def write_excel_like_model(out_xlsx: str, transcript_title: str, table_rows: dic
     ws.column_dimensions["D"].width = 18
 
     ws["A1"] = str(transcript_title)
+
     ws["A3"] = "SPIN SELLING"
     ws["B3"] = "CHECK_01"
     ws["C3"] = "CHECK_02"
@@ -451,312 +393,408 @@ def write_excel_like_model(out_xlsx: str, transcript_title: str, table_rows: dic
     for ph in PHASES:
         c1 = table_rows.get(ph, {}).get("check1", "0")
         c2 = table_rows.get(ph, {}).get("check2", "0")
+
         ws[f"A{r}"] = ph
         ws[f"B{r}"] = int(_to01(c1))
         ws[f"C{r}"] = int(_to01(c2))
         ws[f"D{r}"] = resultado_texto(c1, c2)
         r += 1
 
-    wb.save(out_xlsx)
+    wb.save(str(out_xlsx))
 
-def write_batch_excel(out_xlsx: str, blocks: list):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Planilha1"
 
-    ws.column_dimensions["A"].width = 22
-    ws.column_dimensions["B"].width = 10
-    ws.column_dimensions["C"].width = 10
-    ws.column_dimensions["D"].width = 18
+# ============================================================
+# Cache SQLite
+# ============================================================
 
-    row = 1
-    for (title, table_rows) in blocks:
-        ws[f"A{row}"] = str(title)
-        row += 1
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS cache (
+  key TEXT PRIMARY KEY,
+  text_sha256 TEXT NOT NULL,
+  prompt_sha256 TEXT NOT NULL,
+  model TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  status TEXT NOT NULL,         -- ok | fail
+  tsv_raw TEXT NOT NULL,
+  error TEXT NOT NULL
+);
 
-        ws[f"A{row}"] = "SPIN SELLING"
-        ws[f"B{row}"] = "CHECK_01"
-        ws[f"C{row}"] = "CHECK_02"
-        ws[f"D{row}"] = "RESULTADO TEXTO"
-        row += 1
+CREATE INDEX IF NOT EXISTS idx_cache_text_sha256 ON cache(text_sha256);
+"""
 
-        for ph in PHASES:
-            c1 = table_rows.get(ph, {}).get("check1", "0")
-            c2 = table_rows.get(ph, {}).get("check2", "0")
-            ws[f"A{row}"] = ph
-            ws[f"B{row}"] = int(_to01(c1))
-            ws[f"C{row}"] = int(_to01(c2))
-            ws[f"D{row}"] = resultado_texto(c1, c2)
-            row += 1
+def cache_init(db_path: Path) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+    finally:
+        conn.close()
 
-        row += 1
+def cache_get(db_path: Path, key: str) -> Optional[Dict[str, str]]:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT key, status, tsv_raw, error, created_at FROM cache WHERE key = ?", (key,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "key": row[0],
+            "status": row[1],
+            "tsv_raw": row[2],
+            "error": row[3],
+            "created_at": row[4],
+        }
+    finally:
+        conn.close()
 
-    wb.save(out_xlsx)
+def cache_set(
+    db_path: Path,
+    key: str,
+    text_sha256: str,
+    prompt_sha256: str,
+    model: str,
+    status: str,
+    tsv_raw: str,
+    error: str,
+) -> None:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO cache(key, text_sha256, prompt_sha256, model, created_at, status, tsv_raw, error)
+            VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(key) DO UPDATE SET
+              text_sha256=excluded.text_sha256,
+              prompt_sha256=excluded.prompt_sha256,
+              model=excluded.model,
+              created_at=excluded.created_at,
+              status=excluded.status,
+              tsv_raw=excluded.tsv_raw,
+              error=excluded.error
+            """,
+            (key, text_sha256, prompt_sha256, model, now_iso(), status, tsv_raw, error),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
-# --------------------------
-# HELPERS DE TEMPO
-# --------------------------
-def fmt_hms(seconds: float) -> str:
-    seconds = max(0.0, float(seconds))
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    if h > 0:
-        return f"{h}h {m:02d}m {s:02d}s"
-    if m > 0:
-        return f"{m}m {s:02d}s"
-    return f"{s}s"
 
-# --------------------------
+# ============================================================
+# Arquivamento de TXT processado
+# ============================================================
+
+def safe_move_to_archive(in_path: Path, in_root: Path, logger: logging.Logger) -> None:
+    """
+    Move o TXT para ARCHIVE_DIR, preservando estrutura relativa ao in_root.
+    Se já existir arquivo com mesmo nome, adiciona sufixo de timestamp.
+    """
+    try:
+        rel = in_path.relative_to(in_root)
+    except Exception:
+        # Se não for relativo ao in_root, joga numa pasta genérica
+        rel = Path(in_path.name)
+
+    dest = ARCHIVE_DIR / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if dest.exists():
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dest = dest.with_name(f"{dest.stem}_{ts}{dest.suffix}")
+
+    try:
+        shutil.move(str(in_path), str(dest))
+    except Exception as e:
+        logger.error(f"Falha ao mover para archive: {in_path} -> {dest} | {e}")
+
+
+# ============================================================
+# Processamento de arquivo
+# ============================================================
+
+@dataclass
+class JobResult:
+    ok: bool
+    in_path: Path
+    out_xlsx: Path
+    used_cache: bool
+    error: str
+
+def build_cache_key(text_sha: str, prompt_sha: str, model: str, vendor_only: bool) -> str:
+    base = f"spin02|v8_1|{model}|prompt={prompt_sha}|text={text_sha}|vendor_only={int(vendor_only)}"
+    return sha256_text(base)
+
+def run_once(core: str, filename: str, text_for_llm: str, logger: logging.Logger) -> TSVResult:
+    core_packed = pack_command_core(core, filename)
+    prompt = build_prompt(core_packed, text_for_llm)
+    raw = call_ollama(prompt, timeout_s=OLLAMA_TIMEOUT_S, logger=logger)
+
+    ok, err = validate_tsv(raw)
+    if not ok:
+        return TSVResult(ok=False, error=err, raw_tsv=raw, table_rows={})
+
+    rows = parse_tsv(raw)
+    return TSVResult(ok=True, error="", raw_tsv=raw, table_rows=rows)
+
+def process_one(
+    in_path: Path,
+    in_root: Path,
+    out_dir: Path,
+    prompt_main: str,
+    prompt_alt: str,
+    prompt_sha256: str,
+    db_path: Path,
+    force: bool,
+    quiet: bool,
+    logger: logging.Logger,
+) -> JobResult:
+    stem = in_path.stem
+    out_xlsx = out_dir / f"{stem}_SPIN.xlsx"
+
+    # Lê TXT
+    try:
+        raw_txt = read_text_file(in_path)
+    except Exception as e:
+        logger.error(f"Falha ao ler TXT: {in_path} | {e}")
+        rows_fail = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
+        write_excel(out_xlsx, f"{stem} — FALHA", rows_fail)
+        return JobResult(ok=False, in_path=in_path, out_xlsx=out_xlsx, used_cache=False, error=str(e))
+
+    # Prepara texto
+    text_for_llm = extract_vendor_only(raw_txt) if SPIN_VENDOR_ONLY else limit_text(raw_txt)
+    text_sha = sha256_text(text_for_llm)
+    cache_key = build_cache_key(text_sha, prompt_sha256, OLLAMA_MODEL, SPIN_VENDOR_ONLY)
+
+    # Cache hit
+    if not force:
+        cached = cache_get(db_path, cache_key)
+        if cached and cached.get("status") == "ok":
+            tsv_raw = cached.get("tsv_raw", "")
+            ok, _ = validate_tsv(tsv_raw)
+            if ok:
+                rows = parse_tsv(tsv_raw)
+                write_excel(out_xlsx, stem, rows)
+                if not quiet:
+                    logger.info(f"OK  | cache | {in_path.name} -> {out_xlsx.name}")
+                safe_move_to_archive(in_path, in_root, logger)
+                return JobResult(ok=True, in_path=in_path, out_xlsx=out_xlsx, used_cache=True, error="")
+
+    # Execução principal
+    err_msg = ""
+    tsv_raw_best = ""
+    rows_best: Dict[str, Dict[str, str]] = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
+
+    try:
+        res_main = run_once(prompt_main, in_path.name, text_for_llm, logger=logger)
+
+        if res_main.ok:
+            # Se válido, guarda como candidato
+            tsv_raw_best = res_main.raw_tsv
+            rows_best = res_main.table_rows
+
+            # Se ALL-ZERO, faz verificação secundária (silenciosa)
+            if prompt_alt.strip() and is_all_zero_rows(rows_best):
+                res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger)
+                if res_alt.ok and (not is_all_zero_rows(res_alt.table_rows)):
+                    tsv_raw_best = res_alt.raw_tsv
+                    rows_best = res_alt.table_rows
+
+            cache_set(db_path, cache_key, text_sha, prompt_sha256, OLLAMA_MODEL, "ok", tsv_raw_best, "")
+            write_excel(out_xlsx, stem, rows_best)
+
+            if not quiet:
+                logger.info(f"OK  | run   | {in_path.name} -> {out_xlsx.name}")
+
+            safe_move_to_archive(in_path, in_root, logger)
+            return JobResult(ok=True, in_path=in_path, out_xlsx=out_xlsx, used_cache=False, error="")
+
+        # Se inválido, tenta alternativa (silenciosa)
+        err_msg = res_main.error or "invalid_tsv"
+        tsv_raw_best = res_main.raw_tsv or ""
+
+        if prompt_alt.strip():
+            res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger)
+            if res_alt.ok:
+                tsv_raw_best = res_alt.raw_tsv
+                rows_best = res_alt.table_rows
+
+                # Se alternativa também ALL-ZERO, mantém (não força nada)
+                cache_set(db_path, cache_key, text_sha, prompt_sha256, OLLAMA_MODEL, "ok", tsv_raw_best, "")
+                write_excel(out_xlsx, stem, rows_best)
+
+                if not quiet:
+                    logger.info(f"OK  | run   | {in_path.name} -> {out_xlsx.name}")
+
+                safe_move_to_archive(in_path, in_root, logger)
+                return JobResult(ok=True, in_path=in_path, out_xlsx=out_xlsx, used_cache=False, error="")
+
+            err_msg = res_alt.error or err_msg
+
+    except Exception as e:
+        err_msg = str(e) or err_msg
+
+    # Falha final
+    logger.error(f"FAIL| {in_path} | {err_msg}")
+    cache_set(db_path, cache_key, text_sha, prompt_sha256, OLLAMA_MODEL, "fail", (tsv_raw_best or ""), err_msg)
+    write_excel(out_xlsx, f"{stem} — FALHA", rows_best)
+    safe_move_to_archive(in_path, in_root, logger)
+    return JobResult(ok=False, in_path=in_path, out_xlsx=out_xlsx, used_cache=False, error=err_msg)
+
+
+# ============================================================
+# Discovery de arquivos
+# ============================================================
+
+def discover_txts(in_dir: Path, pattern: str, recursive: bool) -> List[Path]:
+    if recursive:
+        return sorted([p for p in in_dir.rglob(pattern) if p.is_file()])
+    return sorted([p for p in in_dir.glob(pattern) if p.is_file()])
+
+
+# ============================================================
 # CLI
-# --------------------------
-def parse_args():
+# ============================================================
+
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="SPIN Analyzer 02_zeroshot (Tele_IA) — presence detection (double-check) -> Excel"
+        description="SPIN Analyzer 02 (LOCAL) — TXT -> Ollama -> TSV -> Excel",
     )
-    p.add_argument("--input_dir", default="", help="Pasta com .txt para análise (prioridade máxima).")
-    p.add_argument("--run", default="", help="Nome do run. Se setado, salva em OUT_DIR/_runs/run_<run>/")
-    p.add_argument("--only_file", default="", help="Processar apenas um arquivo específico (ex: teste_01.txt).")
-    p.add_argument("--no_batch", action="store_true", help="Não gerar o Excel do lote.")
+    p.add_argument("--in_dir", default=str(DEFAULT_IN_DIR), help="Pasta de entrada (default: arquivos_transcritos/txt)")
+    p.add_argument("--out_dir", default=str(DEFAULT_OUT_DIR), help="Pasta de saída (default: saida_excel)")
+    p.add_argument("--pattern", default="*.txt", help="Padrão de arquivos (default: *.txt)")
+    p.add_argument("--recursive", default="true", help="true/false (default: true)")
+    p.add_argument("--workers", type=int, default=1, help="Número de workers (default: 1)")
+    p.add_argument("--force", action="store_true", help="Ignora cache e reprocessa")
+    p.add_argument("--quiet", action="store_true", help="Reduz logs no console")
     return p.parse_args()
 
-def resolve_in_dir(cli_input_dir: str) -> str:
-    # 1) CLI manda (e NÃO pode ter fallback silencioso)
-    if cli_input_dir and cli_input_dir.strip():
-        p = os.path.abspath(os.path.expanduser(cli_input_dir.strip()))
-        if not os.path.isdir(p):
-            raise SystemExit(f"[fatal] --input_dir não existe ou não é pasta: {p}")
-        return p
+def parse_bool(s: str, default: bool = True) -> bool:
+    if s is None:
+        return default
+    v = str(s).strip().lower()
+    if v in ("1", "true", "yes", "y", "sim"):
+        return True
+    if v in ("0", "false", "no", "n", "nao", "não"):
+        return False
+    return default
 
-    # 2) ENV
-    env_dir = (os.getenv("SPIN_IN_DIR", "") or "").strip()
-    if env_dir:
-        p = os.path.abspath(os.path.expanduser(env_dir))
-        if not os.path.isdir(p):
-            raise SystemExit(f"[fatal] SPIN_IN_DIR setado mas pasta não existe: {p}")
-        return p
 
-    # 3) default
-    if not os.path.isdir(DEFAULT_IN_DIR):
-        raise SystemExit(f"[fatal] Pasta default de entrada não existe: {DEFAULT_IN_DIR}")
-    return DEFAULT_IN_DIR
+# ============================================================
+# Main
+# ============================================================
 
-def resolve_out_dir(cli_run: str) -> str:
-    base = (os.getenv("SPIN_OUT_DIR", "") or "").strip() or DEFAULT_OUT_DIR
-    base = os.path.abspath(os.path.expanduser(base))
-    os.makedirs(base, exist_ok=True)
-
-    run = (cli_run or "").strip()
-    if not run:
-        return base
-
-    # padrão de execução isolada
-    out = os.path.join(base, "_runs", f"run_{run}")
-    os.makedirs(out, exist_ok=True)
-    return out
-
-# --------------------------
-# MAIN
-# --------------------------
-def main():
-    global IN_DIR, OUT_DIR, CACHE_DIR, SPIN_ONLY_FILE, WRITE_BATCH_FILE
-
+def main() -> int:
     args = parse_args()
+    quiet = bool(args.quiet)
+    logger = setup_logging(quiet=quiet)
 
-    # resolve paths com prioridade correta
-    IN_DIR = resolve_in_dir(args.input_dir)
-    OUT_DIR = resolve_out_dir(args.run)
+    in_dir = Path(args.in_dir).expanduser().resolve()
+    out_dir = Path(args.out_dir).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # opcional via CLI: apenas um arquivo
-    if args.only_file and args.only_file.strip():
-        SPIN_ONLY_FILE = args.only_file.strip()
+    # cria archive dir
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # opcional via CLI: sem batch
-    if args.no_batch:
-        WRITE_BATCH_FILE = False
+    recursive = parse_bool(args.recursive, default=True)
+    workers = max(1, int(args.workers or 1))
+    force = bool(args.force)
 
-    # cache dentro do OUT_DIR final (run-safe)
-    CACHE_DIR = os.path.join(OUT_DIR, ".cache_spin02")
-    os.makedirs(OUT_DIR, exist_ok=True)
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    # Prompts sempre do arquivo
+    try:
+        prompt_main = load_prompt_file(PROMPT_MAIN_PATH)
+        prompt_alt = load_prompt_file(PROMPT_ALT_PATH) if PROMPT_ALT_PATH.exists() else ""
+    except Exception as e:
+        logger.error(f"Falha ao carregar prompt(s) em assets/: {e}")
+        return 1
 
-    t_global_0 = time.time()
-    start_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    prompt_sha = sha256_text(prompt_main)
 
-    print("===========================================================")
-    print("🧠 02_zeroshot — SPIN Analyzer (v7.11+cli)")
-    print(f"⏱️  Início: {start_ts}")
-    print(f"📥 IN_DIR : {IN_DIR}")
-    print(f"📤 OUT_DIR: {OUT_DIR}")
-    if (args.run or "").strip():
-        print(f"🏷️  RUN    : {args.run.strip()}")
-    print(f"🤖 OLLAMA : {OLLAMA_MODEL} | timeout={OLLAMA_TIMEOUT_S}s | retries={OLLAMA_TIMEOUT_RETRIES}")
-    print(f"🧾 Vendor-only: {'SIM' if SPIN_VENDOR_ONLY else 'NÃO'}")
-    if COMMAND_CORE_FILE:
-        print(f"🧩 Command Core (env): {COMMAND_CORE_FILE}")
-    else:
-        print("🧩 Command Core: fallback (assets)")
-    if FALLBACK_CORE_RAW:
-        print(f"🛟 Fallback Core: {FALLBACK_CORE_FILE}")
-    else:
-        print("🛟 Fallback Core: (não encontrado / desativado)")
-    if SPIN_ONLY_FILE:
-        print(f"🎯 ONLY_FILE: {SPIN_ONLY_FILE}")
-    print("===========================================================")
+    # Cache DB init
+    cache_init(CACHE_DB_PATH)
 
-    files = sorted([f for f in os.listdir(IN_DIR) if f.lower().endswith(".txt")])
+    if not in_dir.exists() or not in_dir.is_dir():
+        logger.error(f"Pasta de entrada inválida: {in_dir}")
+        return 1
 
-    if SPIN_ONLY_FILE:
-        files = [f for f in files if f == SPIN_ONLY_FILE]
-        if not files:
-            print(f"⛔ SPIN_ONLY_FILE='{SPIN_ONLY_FILE}' não encontrado em {IN_DIR}")
-            return
-
-    print(f"📂 Arquivos TXT para análise ({len(files)}):", files[:10], ("..." if len(files) > 10 else ""))
+    files = discover_txts(in_dir, args.pattern, recursive=recursive)
     if not files:
-        print("⚠️ Nenhum .txt encontrado.")
-        return
+        logger.info("Nenhum TXT encontrado.")
+        return 0
 
-    blocks_for_batch = []
-    batch_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not quiet:
+        logger.info("SPIN Analyzer 02 (LOCAL)")
+        logger.info(f"Início: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"IN : {in_dir}")
+        logger.info(f"OUT: {out_dir}")
+        logger.info(f"Modelo: {OLLAMA_MODEL}")
+        logger.info(f"Vendor-only: {'SIM' if SPIN_VENDOR_ONLY else 'NÃO'}")
+        logger.info(f"Arquivos: {len(files)}")
 
-    n = len(files)
-    per_file_times = []
+    t0 = time.time()
+    failed = 0
 
-    for idx, f in enumerate(files, start=1):
-        in_path = os.path.join(IN_DIR, f)
-        stem = os.path.splitext(f)[0]
-        title = stem
-        out_xlsx = os.path.join(OUT_DIR, f"{stem}_SPIN.xlsx")
+    if workers == 1:
+        for i, fp in enumerate(files, start=1):
+            t_file = time.time()
 
-        # ================================
-        # REUSE INDIVIDUAL (REAL)
-        # ================================
-        if os.path.exists(out_xlsx):
-            try:
-                table_rows = read_table_rows_from_excel(out_xlsx)
-                print(f"\n↪️  Pulando Ollama (já existe): {out_xlsx}")
-                print(f"🧾 SPIN (reused) = {format_spin_summary(table_rows)}")
-                blocks_for_batch.append((title, table_rows))
-                continue
-            except Exception as e:
-                print(f"\n[warn] Falha lendo Excel existente, vai recalcular: {e}")
+            res = process_one(
+                in_path=fp,
+                in_root=in_dir,
+                out_dir=out_dir,
+                prompt_main=prompt_main,
+                prompt_alt=prompt_alt,
+                prompt_sha256=prompt_sha,
+                db_path=CACHE_DB_PATH,
+                force=force,
+                quiet=quiet,
+                logger=logger,
+            )
 
-        raw_txt = read_txt(in_path)
+            if not res.ok:
+                failed += 1
 
-        if SPIN_VENDOR_ONLY:
-            text_for_llm = extract_vendor_only(raw_txt)
-        else:
-            text_for_llm = limit_text(raw_txt)
+            if not quiet:
+                dt = time.time() - t_file
+                done = i
+                total = len(files)
+                if done >= 2:
+                    avg = (time.time() - t0) / max(1, done)
+                    eta = (total - done) * avg
+                    logger.info(f"Progresso: {done}/{total} | Último: {fmt_hms(dt)} | ETA: {fmt_hms(eta)}")
 
-        core_packed = pack_command_core(COMMAND_CORE_RAW, f)
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # cache key inclui hash do core principal (evita cache sujo quando core muda)
-        key = sha256_text("|".join([
-            "spin02_v7_11_cli",
-            OLLAMA_MODEL,
-            sha256_text(COMMAND_CORE_RAW),
-            sha256_text(core_packed),
-            sha256_text(text_for_llm),
-            str(int(SPIN_VENDOR_ONLY)),
-            f
-        ]))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = []
+            for fp in files:
+                futs.append(ex.submit(
+                    process_one,
+                    fp, in_dir, out_dir, prompt_main, prompt_alt, prompt_sha,
+                    CACHE_DB_PATH, force, quiet, logger
+                ))
 
-        cached = cache_get(key)
-        if cached and isinstance(cached, dict) and cached.get("table_rows"):
-            table_rows = cached["table_rows"]
-            print(f"\n⚡ Cache hit [{idx}/{n}]: {f}")
-            print(f"🧾 SPIN = {format_spin_summary(table_rows)}")
-        else:
-            prompt = build_prompt(core_packed, text_for_llm)
+            done = 0
+            total = len(futs)
+            for fut in as_completed(futs):
+                done += 1
+                res = fut.result()
+                if not res.ok:
+                    failed += 1
+                if not quiet:
+                    avg = (time.time() - t0) / max(1, done)
+                    eta = (total - done) * avg
+                    logger.info(f"Progresso: {done}/{total} | ETA: {fmt_hms(eta)}")
 
-            print(f"\n📄 [{idx}/{n}] TXT: {f}")
-            print("🧠 Analisando (Ollama)...")
-            t0 = time.time()
-            out = ""
-            err = ""
+    total_s = time.time() - t0
+    if not quiet:
+        logger.info(f"Fim: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Duração total: {fmt_hms(total_s)}")
 
-            try:
-                out = ollama_generate(prompt, timeout_s=OLLAMA_TIMEOUT_S)
+    return 1 if failed > 0 else 0
 
-                # dump debug principal (prompt + raw output)
-                dump_debug(OUT_DIR, in_path, "prompt", prompt)
-                dump_debug(OUT_DIR, in_path, "response", out or "")
-
-            except Exception as e:
-                err = str(e)
-                print(f"   ⛔ Erro: {err}")
-                out = ""
-
-            dt = time.time() - t0
-            per_file_times.append(dt)
-
-            # ETA simples
-            if len(per_file_times) >= 3:
-                avg = sum(per_file_times[-10:]) / max(1, len(per_file_times[-10:]))
-                remaining = (n - idx) * avg
-                print(f"   ✅ Resposta em {dt:.1f}s | média~{avg:.1f}s | ETA~{fmt_hms(remaining)}")
-            else:
-                print(f"   ✅ Resposta em {dt:.1f}s")
-
-            # parse
-            table_rows = parse_table(out)
-
-            # ----------------------------
-            # FALLBACK: se veio tudo 0/0
-            # ----------------------------
-            used_fallback = False
-            if is_all_zero(table_rows) and FALLBACK_CORE_RAW:
-                print("   ⚠️ All-zero detectado. Rodando fallback (1x)...")
-                try:
-                    core_fb = pack_command_core(FALLBACK_CORE_RAW, f)
-                    prompt_fb = build_prompt(core_fb, text_for_llm)
-                    out_fb = ollama_generate(prompt_fb, timeout_s=OLLAMA_TIMEOUT_S)
-
-                    dump_debug(OUT_DIR, in_path, "fallback.prompt", prompt_fb)
-                    dump_debug(OUT_DIR, in_path, "fallback.response", out_fb or "")
-
-                    table_fb = parse_table(out_fb)
-                    if not is_all_zero(table_fb):
-                        table_rows = table_fb
-                        used_fallback = True
-                        print("   ✅ Fallback resolveu (não all-zero).")
-                    else:
-                        print("   ⚠️ Fallback também veio all-zero. Mantendo original.")
-                except Exception as _e:
-                    print("   ⚠️ Fallback falhou:", _e)
-
-            print(f"🧾 SPIN = {format_spin_summary(table_rows)}")
-
-            # salva cache (se fallback foi usado, ainda é ok cachear o RESULTADO final)
-            cache_set(key, {
-                "file": f,
-                "model": OLLAMA_MODEL,
-                "created_at": datetime.now().isoformat(timespec="seconds"),
-                "error": err,
-                "used_fallback": bool(used_fallback),
-                "table_rows": table_rows,
-                "raw_output": (out or "")[:12000],
-            })
-
-        write_excel_like_model(out_xlsx, title, table_rows)
-        print(f"📄 Excel individual salvo: {out_xlsx}")
-
-        blocks_for_batch.append((title, table_rows))
-
-    if WRITE_BATCH_FILE and len(blocks_for_batch) >= 1:
-        out_batch = os.path.join(OUT_DIR, f"SPIN_RESULTADOS_LOTE_{batch_tag}.xlsx")
-        write_batch_excel(out_batch, blocks_for_batch)
-        print(f"\n📦 Excel do lote salvo: {out_batch}")
-
-    end_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    total_s = time.time() - t_global_0
-
-    print("\n===========================================================")
-    print("✅ 02_zeroshot FINALIZADO (v7.11+cli).")
-    print(f"⏱️  Fim: {end_ts}")
-    print(f"⌛ Duração total: {fmt_hms(total_s)}")
-    print("===========================================================")
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
