@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-02_zeroshot.py — SPIN Analyzer (LOCAL) — v8.1 (Windows-friendly)
+02_zeroshot.py — SPIN Analyzer (LOCAL) — v8.1.1 (Windows-friendly)
 
-TXT -> Ollama -> TSV (rigoroso) -> Excel individual.
+TXT -> Ollama -> TSV (tolerante) -> Excel individual.
 
 Arquivos:
 - Entrada (default): arquivos_transcritos/txt (recursivo por padrão)
 - Saída (default): saida_excel
 - Prompts (sempre lidos do arquivo):
   - assets/Command_Core_D_Check_V2_6.txt
+  - assets/Command_Core_D_Check_V2_6_FALLBACK.txt
 - Cache SQLite: cache_spin02/cache.db
 - Arquivamento de TXT processado: cachebd/ (move após processar)
 
@@ -33,13 +34,13 @@ import shutil
 import sqlite3
 import sys
 import time
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib import request
 from urllib.error import HTTPError, URLError
-
 
 from openpyxl import Workbook
 
@@ -56,6 +57,7 @@ PHASES: List[str] = [
     "P4_need_payoff",
 ]
 
+# Header canônico (3 colunas). O parser agora aceita variantes e reconstrói este formato.
 TSV_HEADER = "SPIN SELLING\tCHECK_01\tCHECK_02"
 
 TAG_RE = re.compile(
@@ -129,6 +131,9 @@ OLLAMA_REPEAT_PENALTY = _env_float("OLLAMA_REPEAT_PENALTY", 1.06)
 SPIN_VENDOR_ONLY = (_env_str("SPIN_VENDOR_ONLY", "1") != "0")
 SPIN_MAX_LINES_TOTAL = _env_int("SPIN_MAX_LINES_TOTAL", 260)
 SPIN_MAX_CHARS_TOTAL = _env_int("SPIN_MAX_CHARS_TOTAL", 12000)
+
+# Heartbeat enquanto o Ollama roda (para mostrar que não travou)
+HEARTBEAT_EVERY_S = _env_int("SPIN_HEARTBEAT_EVERY_S", 25)
 
 
 # ============================================================
@@ -277,10 +282,21 @@ def build_prompt(core_packed: str, text_for_llm: str) -> str:
 
 
 # ============================================================
-# Ollama HTTP
+# Ollama HTTP (com heartbeat)
 # ============================================================
 
-def call_ollama(prompt: str, timeout_s: int, logger: logging.Logger) -> str:
+def _heartbeat(stop_evt: threading.Event, logger: logging.Logger, quiet: bool, prefix: str) -> None:
+    t0 = time.time()
+    # Primeira mensagem rápida para reforçar que está rodando
+    if not quiet:
+        logger.info(prefix + " iniciando…")
+    while not stop_evt.wait(timeout=max(1, int(HEARTBEAT_EVERY_S))):
+        if quiet:
+            continue
+        elapsed = int(time.time() - t0)
+        logger.info(prefix + f" rodando há {elapsed}s…")
+
+def call_ollama(prompt: str, timeout_s: int, logger: logging.Logger, quiet: bool = False) -> str:
     payload = {
         "model": OLLAMA_MODEL,
         "prompt": prompt,
@@ -305,17 +321,32 @@ def call_ollama(prompt: str, timeout_s: int, logger: logging.Logger) -> str:
     )
 
     last_err: Optional[Exception] = None
+
     for attempt in range(OLLAMA_TIMEOUT_RETRIES + 1):
+        stop_evt = threading.Event()
+        hb = threading.Thread(
+            target=_heartbeat,
+            args=(stop_evt, logger, quiet, f"Ollama ({OLLAMA_MODEL})"),
+            daemon=True,
+        )
+        hb.start()
+
         try:
             with request.urlopen(req, timeout=timeout_s) as resp:
                 raw = resp.read().decode("utf-8", errors="ignore")
             obj = json.loads(raw)
-            return (obj.get("response") or "").strip()
+            out = (obj.get("response") or "").strip()
+            return out
         except Exception as e:
             last_err = e
             if attempt < OLLAMA_TIMEOUT_RETRIES:
+                if not quiet:
+                    logger.info(f"Ollama falhou (tentativa {attempt+1}/{OLLAMA_TIMEOUT_RETRIES+1}). Repetindo…")
                 time.sleep(2 + attempt * 2)
                 continue
+        finally:
+            stop_evt.set()
+            # não precisa join; thread é daemon e para com o event
 
     msg = str(last_err) if last_err else "unknown error"
     logger.error(f"Erro no Ollama: {msg}")
@@ -323,47 +354,125 @@ def call_ollama(prompt: str, timeout_s: int, logger: logging.Logger) -> str:
 
 
 # ============================================================
-# TSV Validation / Parse (rigoroso)
+# TSV Parse (TOLERANTE) + Canonicalização
 # ============================================================
 
 @dataclass
 class TSVResult:
     ok: bool
     error: str
-    raw_tsv: str
+    raw_tsv: str          # o que guardamos no cache (canônico se ok; bruto se fail)
     table_rows: Dict[str, Dict[str, str]]
 
-def validate_tsv(tsv: str) -> Tuple[bool, str]:
-    if not tsv or not tsv.strip():
-        return False, "empty_response"
+_SPLIT_RE = re.compile(r"\t+|\s{2,}|\s*\|\s*|;|,")
 
-    lines = [ln.strip() for ln in tsv.splitlines() if ln.strip()]
-    if len(lines) != 6:
-        return False, f"invalid_line_count:{len(lines)}"
+def _normalize_line(s: str) -> str:
+    # remove aspas e caracteres invisíveis comuns
+    s = (s or "").replace("\u200b", "").replace("\ufeff", "").strip()
+    s = s.strip("`").strip()
+    return s
 
-    if lines[0] != TSV_HEADER:
-        return False, "invalid_header"
+def _looks_like_header(line: str) -> bool:
+    l = line.lower()
+    return ("spin" in l and "check" in l) or l.replace("_", " ").strip() in (
+        "spin selling check 01 check 02",
+        "spin selling check_01 check_02",
+    )
 
-    for i, ph in enumerate(PHASES, start=1):
-        parts = lines[i].split("\t")
-        if len(parts) != 3:
-            return False, f"invalid_cols:{ph}:{len(parts)}"
-        if parts[0] != ph:
-            return False, f"invalid_phase:{i}:{parts[0]}"
-        c1, c2 = parts[1].strip(), parts[2].strip()
-        if c1 not in ("0", "1") or c2 not in ("0", "1"):
-            return False, f"invalid_values:{ph}:{c1},{c2}"
+def _parse_numbers_from_parts(parts: List[str]) -> Tuple[Optional[str], Optional[str]]:
+    nums = []
+    for p in parts:
+        x = (p or "").strip()
+        if x in ("0", "1"):
+            nums.append(x)
+        elif x.lower() in ("true", "false"):
+            nums.append("1" if x.lower() == "true" else "0")
+        elif x in ("1.0", "0.0"):
+            nums.append("1" if x.startswith("1") else "0")
+        if len(nums) >= 2:
+            break
+    if len(nums) >= 2:
+        return nums[0], nums[1]
+    return None, None
 
-    return True, ""
+def canonicalize_tsv_and_rows(raw: str) -> Tuple[bool, str, str, Dict[str, Dict[str, str]]]:
+    """
+    Retorna:
+      ok, err, canonical_tsv, rows
+    Regras tolerantes:
+      - aceita header com variações (tabs, espaços, underscores, pipes)
+      - aceita saída com 5 linhas (sem header) desde que tenha P0..P4
+      - aceita 4 colunas (com RESULTADO) e ignora colunas extra
+      - aceita separador por TAB, múltiplos espaços, ou pipes
+      - ignora linhas fora do padrão (ex: "Aqui está:", blocos, etc.)
+    """
+    if not raw or not str(raw).strip():
+        return False, "empty_response", "", {}
 
-def parse_tsv(tsv: str) -> Dict[str, Dict[str, str]]:
-    lines = [ln.strip() for ln in tsv.splitlines() if ln.strip()]
-    rows = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
-    for i, ph in enumerate(PHASES, start=1):
-        parts = lines[i].split("\t")
-        rows[ph]["check1"] = parts[1].strip()
-        rows[ph]["check2"] = parts[2].strip()
-    return rows
+    # filtra linhas úteis e tenta identificar as fases
+    lines0 = [_normalize_line(x) for x in str(raw).splitlines()]
+    lines = [ln for ln in lines0 if ln]
+
+    if not lines:
+        return False, "empty_response", "", {}
+
+    rows: Dict[str, Dict[str, str]] = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
+    got = set()
+
+    for ln in lines:
+        # pular headers e lixo comum
+        if _looks_like_header(ln):
+            continue
+        lnl = ln.lower()
+        if lnl.startswith(("aqui está", "segue", "resultado", "resposta", "tsv", "```")):
+            continue
+
+        # tenta achar qual fase é
+        phase = None
+        for ph in PHASES:
+            if ln.startswith(ph):
+                phase = ph
+                rest = ln[len(ph):].strip()
+                parts = _SPLIT_RE.split(rest)
+                c1, c2 = _parse_numbers_from_parts(parts)
+                if c1 is not None and c2 is not None:
+                    rows[ph]["check1"] = c1
+                    rows[ph]["check2"] = c2
+                    got.add(ph)
+                break
+
+        if phase is not None:
+            continue
+
+        # tolerância: às vezes vem "P0_abertura 1 1 1" sem tabs
+        for ph in PHASES:
+            if ph in ln:
+                # pega o pedaço após a ocorrência da fase
+                idx = ln.find(ph)
+                rest = ln[idx + len(ph):].strip()
+                parts = _SPLIT_RE.split(rest)
+                c1, c2 = _parse_numbers_from_parts(parts)
+                if c1 is not None and c2 is not None:
+                    rows[ph]["check1"] = c1
+                    rows[ph]["check2"] = c2
+                    got.add(ph)
+                break
+
+    if len(got) != len(PHASES):
+        # Erro detalhado com fases faltantes (ajuda debug)
+        missing = [ph for ph in PHASES if ph not in got]
+        return False, f"missing_phases:{','.join(missing)}", "", {}
+
+    # monta TSV canônico
+    out_lines = [TSV_HEADER]
+    for ph in PHASES:
+        out_lines.append(f"{ph}\t{_to01(rows[ph]['check1'])}\t{_to01(rows[ph]['check2'])}")
+        # normaliza para 0/1
+        rows[ph]["check1"] = _to01(rows[ph]["check1"])
+        rows[ph]["check2"] = _to01(rows[ph]["check2"])
+
+    canonical = "\n".join(out_lines).strip()
+    return True, "", canonical, rows
 
 
 # ============================================================
@@ -494,7 +603,6 @@ def safe_move_to_archive(in_path: Path, in_root: Path, logger: logging.Logger) -
     try:
         rel = in_path.relative_to(in_root)
     except Exception:
-        # Se não for relativo ao in_root, joga numa pasta genérica
         rel = Path(in_path.name)
 
     dest = ARCHIVE_DIR / rel
@@ -523,20 +631,26 @@ class JobResult:
     error: str
 
 def build_cache_key(text_sha: str, prompt_sha: str, model: str, vendor_only: bool) -> str:
-    base = f"spin02|v8_1|{model}|prompt={prompt_sha}|text={text_sha}|vendor_only={int(vendor_only)}"
+    base = f"spin02|v8_1_1|{model}|prompt={prompt_sha}|text={text_sha}|vendor_only={int(vendor_only)}"
     return sha256_text(base)
 
-def run_once(core: str, filename: str, text_for_llm: str, logger: logging.Logger) -> TSVResult:
+def run_once(core: str, filename: str, text_for_llm: str, logger: logging.Logger, quiet: bool) -> TSVResult:
     core_packed = pack_command_core(core, filename)
     prompt = build_prompt(core_packed, text_for_llm)
-    raw = call_ollama(prompt, timeout_s=OLLAMA_TIMEOUT_S, logger=logger)
 
-    ok, err = validate_tsv(raw)
+    t0 = time.time()
+    raw = call_ollama(prompt, timeout_s=OLLAMA_TIMEOUT_S, logger=logger, quiet=quiet)
+    dt = time.time() - t0
+    if not quiet:
+        logger.info(f"Ollama finalizou em {fmt_hms(dt)}.")
+
+    ok, err, canonical, rows = canonicalize_tsv_and_rows(raw)
     if not ok:
-        return TSVResult(ok=False, error=err, raw_tsv=raw, table_rows={})
+        # em falha, guardamos o raw para debug
+        return TSVResult(ok=False, error=err, raw_tsv=(raw or "").strip(), table_rows={})
 
-    rows = parse_tsv(raw)
-    return TSVResult(ok=True, error="", raw_tsv=raw, table_rows=rows)
+    # em sucesso, guardamos o TSV canônico (estável para cache/replay)
+    return TSVResult(ok=True, error="", raw_tsv=canonical, table_rows=rows)
 
 def process_one(
     in_path: Path,
@@ -572,9 +686,8 @@ def process_one(
         cached = cache_get(db_path, cache_key)
         if cached and cached.get("status") == "ok":
             tsv_raw = cached.get("tsv_raw", "")
-            ok, _ = validate_tsv(tsv_raw)
+            ok, err, canonical, rows = canonicalize_tsv_and_rows(tsv_raw)
             if ok:
-                rows = parse_tsv(tsv_raw)
                 write_excel(out_xlsx, stem, rows)
                 if not quiet:
                     logger.info(f"OK  | cache | {in_path.name} -> {out_xlsx.name}")
@@ -587,16 +700,15 @@ def process_one(
     rows_best: Dict[str, Dict[str, str]] = {ph: {"check1": "0", "check2": "0"} for ph in PHASES}
 
     try:
-        res_main = run_once(prompt_main, in_path.name, text_for_llm, logger=logger)
+        res_main = run_once(prompt_main, in_path.name, text_for_llm, logger=logger, quiet=quiet)
 
         if res_main.ok:
-            # Se válido, guarda como candidato
             tsv_raw_best = res_main.raw_tsv
             rows_best = res_main.table_rows
 
             # Se ALL-ZERO, faz verificação secundária (silenciosa)
             if prompt_alt.strip() and is_all_zero_rows(rows_best):
-                res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger)
+                res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger, quiet=True)
                 if res_alt.ok and (not is_all_zero_rows(res_alt.table_rows)):
                     tsv_raw_best = res_alt.raw_tsv
                     rows_best = res_alt.table_rows
@@ -615,12 +727,11 @@ def process_one(
         tsv_raw_best = res_main.raw_tsv or ""
 
         if prompt_alt.strip():
-            res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger)
+            res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger, quiet=True)
             if res_alt.ok:
                 tsv_raw_best = res_alt.raw_tsv
                 rows_best = res_alt.table_rows
 
-                # Se alternativa também ALL-ZERO, mantém (não força nada)
                 cache_set(db_path, cache_key, text_sha, prompt_sha256, OLLAMA_MODEL, "ok", tsv_raw_best, "")
                 write_excel(out_xlsx, stem, rows_best)
 
@@ -739,6 +850,9 @@ def main() -> int:
         for i, fp in enumerate(files, start=1):
             t_file = time.time()
 
+            if not quiet:
+                logger.info(f"Processando: {fp.name}")
+
             res = process_one(
                 in_path=fp,
                 in_root=in_dir,
@@ -759,7 +873,7 @@ def main() -> int:
                 dt = time.time() - t_file
                 done = i
                 total = len(files)
-                if done >= 2:
+                if done >= 1:
                     avg = (time.time() - t0) / max(1, done)
                     eta = (total - done) * avg
                     logger.info(f"Progresso: {done}/{total} | Último: {fmt_hms(dt)} | ETA: {fmt_hms(eta)}")
