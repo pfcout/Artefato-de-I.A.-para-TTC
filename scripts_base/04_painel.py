@@ -546,24 +546,67 @@ def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
 
 def pick_txt(files_map: Dict[str, bytes]) -> Tuple[str, bytes]:
     """
-    Retorna o TXT principal quando o serviço devolve transcrição/diarização junto do áudio.
-    Não altera a lógica do serviço. Apenas expõe o arquivo retornado para download.
+    Retorna o arquivo de transcrição quando o serviço devolve junto do áudio.
+    Suporta TXT e, se houver, SRT/VTT.
     """
-    txts = [(k, v) for k, v in files_map.items() if k.lower().endswith(".txt")]
-    if not txts:
+    cands = []
+    for k, v in (files_map or {}).items():
+        kn = (k or "").strip()
+        if not kn:
+            continue
+        low = kn.lower()
+        if low.endswith(".txt") or low.endswith(".srt") or low.endswith(".vtt"):
+            if v:
+                cands.append((kn, v))
+
+    if not cands:
         return "", b""
 
-    # prioriza nomes comuns de transcrição, senão pega o primeiro em ordem
     def _score(name: str) -> int:
         n = name.lower()
-        if "transc" in n or "transcr" in n:
+        if "transc" in n or "transcr" in n or "transcricao" in n:
             return 0
-        if "diar" in n:
+        if "diar" in n or "speaker" in n or "legenda" in n:
             return 1
         return 2
 
-    txts.sort(key=lambda kv: (_score(kv[0]), kv[0]))
-    return txts[0][0], txts[0][1]
+    cands.sort(key=lambda kv: (_score(kv[0]), kv[0].lower()))
+    return cands[0][0], cands[0][1]
+
+
+def clean_transcript_bytes(raw: bytes) -> bytes:
+    """
+    Remove prefixos de diarização e marcadores de papel, mantendo apenas o texto puro.
+    """
+    if not raw:
+        return b""
+
+    try:
+        text = raw.decode("utf-8", errors="ignore")
+    except Exception:
+        try:
+            text = raw.decode("latin-1", errors="ignore")
+        except Exception:
+            return raw
+
+    lines = text.splitlines()
+
+    prefix_rx = re.compile(
+        r"""^\s*(?:
+            \[(?:SPEAKER\s*\d+|SPK\s*\d+|VENDEDOR|CLIENTE|AGENTE|ATENDENTE)\]\s*|
+            (?:SPEAKER|SPK)\s*\d+\s*[:\-]\s*|
+            (?:VENDEDOR|CLIENTE|AGENTE|ATENDENTE)\s*[:\-]\s*
+        )""",
+        re.IGNORECASE | re.VERBOSE,
+    )
+
+    cleaned = []
+    for ln in lines:
+        ln2 = prefix_rx.sub("", ln)
+        cleaned.append(ln2.rstrip())
+
+    out = "\n".join(cleaned).strip()
+    return out.encode("utf-8")
 
 
 # ==============================
@@ -779,6 +822,7 @@ def run_single_audio(wav_file):
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
 
     txt_name, txt_bytes = pick_txt(files_map)
+    txt_bytes = clean_transcript_bytes(txt_bytes or b"")
 
     st.session_state["last_result"] = {
         "kind": "áudio",
@@ -938,6 +982,7 @@ def run_batch_audio(wavs: List[Any]):
             indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
 
         txt_name, txt_bytes = pick_txt(files_map)
+        txt_bytes = clean_transcript_bytes(txt_bytes or b"")
 
         itens.append(
             {
@@ -1236,8 +1281,7 @@ if lr and lr.get("excel_bytes"):
         key=f"dl_single_{base}",
     )
 
-    # TXT do áudio: logo abaixo da planilha e do download
-    if lr.get("kind") == "áudio" and lr.get("txt_bytes"):
+    if str(lr.get("kind") or "").lower().startswith("áudio") and lr.get("txt_bytes"):
         txt_name = lr.get("txt_name") or f"{base}_transcricao.txt"
         st.download_button(
             "Baixar transcrição",
@@ -1300,7 +1344,6 @@ if br:
                     key=f"dl_item_{idx}_{base}",
                 )
 
-                # TXT do áudio: logo abaixo da planilha do item
                 if item.get("txt_bytes"):
                     txt_name = item.get("txt_name") or f"{base}_transcricao.txt"
                     st.download_button(
