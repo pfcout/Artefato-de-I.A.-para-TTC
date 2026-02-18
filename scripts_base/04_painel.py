@@ -544,6 +544,28 @@ def pick_excels(files_map: Dict[str, bytes]) -> List[Tuple[str, bytes]]:
     return excels
 
 
+def pick_txt(files_map: Dict[str, bytes]) -> Tuple[str, bytes]:
+    """
+    Retorna o TXT principal quando o serviço devolve transcrição/diarização junto do áudio.
+    Não altera a lógica do serviço. Apenas expõe o arquivo retornado para download.
+    """
+    txts = [(k, v) for k, v in files_map.items() if k.lower().endswith(".txt")]
+    if not txts:
+        return "", b""
+
+    # prioriza nomes comuns de transcrição, senão pega o primeiro em ordem
+    def _score(name: str) -> int:
+        n = name.lower()
+        if "transc" in n or "transcr" in n:
+            return 0
+        if "diar" in n:
+            return 1
+        return 2
+
+    txts.sort(key=lambda kv: (_score(kv[0]), kv[0]))
+    return txts[0][0], txts[0][1]
+
+
 # ==============================
 # ✅ UI helpers
 # ==============================
@@ -718,6 +740,8 @@ def run_single_text(content: str):
         "filename": fname,
         "excel_name": main_name,
         "excel_bytes": main_xlsx_fmt,
+        "txt_name": "",
+        "txt_bytes": b"",
         "timings": {"audio_sec": 0.0, "total_sec": float(elapsed)},
     }
 
@@ -754,12 +778,16 @@ def run_single_audio(wav_file):
     main_name, main_xlsx = excels[0]
     main_xlsx_fmt = format_excel_bytes(main_xlsx)
 
+    txt_name, txt_bytes = pick_txt(files_map)
+
     st.session_state["last_result"] = {
         "kind": "áudio",
         "run_id": hdr.get("X-Run-Id", ""),
         "filename": filename,
         "excel_name": main_name,
         "excel_bytes": main_xlsx_fmt,
+        "txt_name": txt_name,
+        "txt_bytes": txt_bytes or b"",
         "timings": {"audio_sec": float(audio_sec or 0.0), "total_sec": float(elapsed)},
     }
 
@@ -845,6 +873,8 @@ def run_batch_text(files: List[Any], pasted_blocks: List[str]):
                 "run_id": hdr.get("X-Run-Id", ""),
                 "excel_individual_name": indiv_name,
                 "excel_individual_bytes": indiv_xlsx_fmt,
+                "txt_name": "",
+                "txt_bytes": b"",
             }
         )
 
@@ -907,6 +937,8 @@ def run_batch_audio(wavs: List[Any]):
             indiv_name, indiv_xlsx = chosen
             indiv_xlsx_fmt = format_excel_bytes(indiv_xlsx)
 
+        txt_name, txt_bytes = pick_txt(files_map)
+
         itens.append(
             {
                 "idx": idx,
@@ -914,6 +946,8 @@ def run_batch_audio(wavs: List[Any]):
                 "run_id": hdr.get("X-Run-Id", ""),
                 "excel_individual_name": indiv_name,
                 "excel_individual_bytes": indiv_xlsx_fmt,
+                "txt_name": txt_name,
+                "txt_bytes": txt_bytes or b"",
             }
         )
 
@@ -1202,6 +1236,18 @@ if lr and lr.get("excel_bytes"):
         key=f"dl_single_{base}",
     )
 
+    # TXT do áudio: logo abaixo da planilha e do download
+    if lr.get("kind") == "áudio" and lr.get("txt_bytes"):
+        txt_name = lr.get("txt_name") or f"{base}_transcricao.txt"
+        st.download_button(
+            "Baixar transcrição",
+            data=lr.get("txt_bytes", b""),
+            file_name=Path(txt_name).name,
+            mime="text/plain",
+            use_container_width=True,
+            key=f"dl_single_txt_{base}",
+        )
+
 
 # ==============================
 # Resultado gerencial
@@ -1244,6 +1290,7 @@ if br:
                     title="Planilha aberta",
                     subtitle="Visualização ampla e legível, com rolagem horizontal e vertical.",
                 )
+
                 st.download_button(
                     "Baixar planilha individual",
                     data=xb,
@@ -1252,6 +1299,18 @@ if br:
                     use_container_width=True,
                     key=f"dl_item_{idx}_{base}",
                 )
+
+                # TXT do áudio: logo abaixo da planilha do item
+                if item.get("txt_bytes"):
+                    txt_name = item.get("txt_name") or f"{base}_transcricao.txt"
+                    st.download_button(
+                        "Baixar transcrição",
+                        data=item.get("txt_bytes", b""),
+                        file_name=Path(txt_name).name,
+                        mime="text/plain",
+                        use_container_width=True,
+                        key=f"dl_item_txt_{idx}_{base}",
+                    )
             else:
                 st.warning("Planilha individual não disponível para este item.")
 
