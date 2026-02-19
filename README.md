@@ -251,15 +251,15 @@ Coloque seus áudios `.wav` na pasta indicada pelo comando `--input_dir`.
 
 Exemplo de pasta utilizada no projeto:
 
-* `arquivos_audio/`
+* `Arquivos_Audio/`
 
 ## 4) Executar a transcrição (exemplo PowerShell com quebras de linha)
 
-Exemplo para processar todos os `.wav` da pasta `arquivos_audio`:
+Exemplo para processar todos os `.wav` da pasta `Arquivos_Audio`:
 
 ```powershell
 python .\scripts_base\01_transcricao.py `
-  --input_dir ".\arquivos_audio" `
+  --input_dir ".\Arquivos_Audio" `
   --pattern "*.wav" `
   --recursive true `
   --model large-v3 `
