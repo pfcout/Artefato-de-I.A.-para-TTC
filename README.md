@@ -241,6 +241,7 @@ Quando ativado, o terminal mostrará algo como `(.venv_transcricao)` no início 
 ## 2) Instalar dependências da transcrição
 
 ```powershell
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements\requirements_transcricao.txt
 ```
 
