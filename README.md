@@ -77,7 +77,7 @@ O sistema foi construído sobre dois pilares fundamentais:
 * **Ollama instalado e em execução localmente (obrigatório)**
 
 ⚠️ **Este projeto NÃO utiliza VPS para execução local.**
-⚠️ **O script 02 depende obrigatoriamente do Ollama local.**
+⚠️ **O script 02 depende obrigatoriamente do Ollama local (qwen14b).**
 
 ---
 
@@ -388,7 +388,7 @@ Sintoma:
 
 Contexto:
 
-* Isso pode ocorrer em áudios curtos, com falas sobrepostas, baixa qualidade, ou quando o diarizador não separa corretamente.
+* Isso pode ocorrer em áudios curtos, com falas sobrepostas, baixa qualidade, ou quando o diarizador não separa corretamente e em chats de ia.
 
 Comportamento esperado do projeto:
 
@@ -444,8 +444,6 @@ Observações:
 * O script 02 lê prompts a partir de arquivos em `assets/`:
 
   * `assets/Command_Core_D_Check_V2_6.txt`
-  * `assets/Command_Core_D_Check_V2_6_FALLBACK.txt`
-* O fallback é utilizado automaticamente quando necessário, sem interromper a execução.
 
 ## 4) Saídas esperadas após a etapa 02
 
