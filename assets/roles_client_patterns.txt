@@ -1,0 +1,51 @@
+10|re|^\s*(sim|não|nao|ok|certo|claro|exato|perfeito|isso|isso\s+mesmo|combinado|fechado|entendi)\s*[.!]?\s*$
+9|re|^\s*(pode\s+ser|pode|beleza|tá|ta|aham|uhum|hum|certo)\s*[.!]?\s*$
+
+9|re|^\s*\b(nós|nos|a\s+gente|eu)\b\s+.*$
+8|re|^\s*\b(nós|a\s+gente)\s+(temos|usamos|fazemos|trabalhamos|operamos|atendemos|vendemos|compramos|controlamos|monitoramos|registramos)\b.*$
+8|re|^\s*\b(eu)\s+(tenho|faço|trabalho|cuido|respondo|acompanho|uso)\b.*$
+
+8|re|^\s*\b(hoje|atualmente|no\s+momento)\b.*\b(nós|a\s+gente|eu)\b.*$
+8|re|^\s*\b(aqui|na\s+empresa|na\s+área|no\s+time|na\s+operação)\b.*$
+
+8|re|^\s*\b(usamos|utilizamos|temos|contamos\s+com)\s+\b(erp|crm|planilha|excel|sistema|software|ferramenta|dashboard)\b.*$
+8|re|^\s*\b(é\s+(assim|desse\s+jeito)|funciona\s+assim|o\s+fluxo\s+é|a\s+rotina\s+é)\b.*$
+
+8|re|^\s*\b(em\s+média|aproximadamente|cerca\s+de|por\s+volta\s+de)\b\s+\d+.*$
+8|re|^\s*\b(\d+)\b\s+(por\s+(dia|semana|mês|mes|ano)|ao\s+mês|por\s+semana|por\s+dia)\b.*$
+8|re|^\s*\b(temos|são|somos)\b\s+\d+\s+(pessoas|colaboradores|usuários|clientes|unidades|filiais|lojas|skus|sku)\b.*$
+
+9|re|^\s*\b(sim,\s+mas|não,\s+porque|depende)\b.*$
+9|re|^\s*\b(não\s+temos|não\s+conseguimos|não\s+é\s+possível|não\s+fazemos|não\s+usamos)\b.*$
+8|re|^\s*\b(tem\s+uma\s+limitação|tem\s+restrição|tem\s+barreira|é\s+complicado|é\s+difícil)\b.*$
+8|re|^\s*\b(o\s+problema\s+é|o\s+ponto\s+é|a\s+dificuldade\s+é)\b.*$
+
+8|re|^\s*\b(a\s+gente\s+sofre\s+com|a\s+gente\s+apanha\s+com|a\s+gente\s+passa\s+por)\b.*$
+8|re|^\s*\b(tem\s+(erro|falha|retrabalho|atraso|ruptura|perda))\b.*$
+8|re|^\s*\b(isso\s+acontece|isso\s+ocorre|acontece\s+com\s+frequência|é\s+recorrente)\b.*$
+
+8|re|^\s*\b(impacta|afeta)\b.*\b(a\s+operação|o\s+time|o\s+cliente|o\s+prazo|a\s+qualidade|o\s+resultado|o\s+caixa|o\s+faturamento)\b.*$
+8|re|^\s*\b(o\s+impacto\s+é|a\s+consequência\s+é)\b.*$
+
+9|re|^\s*\b(orçamento|budget|verba|aprovação|alçada|comitê)\b.*$
+9|re|^\s*\b(quem\s+decide|quem\s+aprova|precisa\s+aprovar|tem\s+que\s+passar\s+por)\b.*$
+8|re|^\s*\b(precisamos|vamos\s+precisar)\b.*\b(aprovar|validar|alinha(r|mento)|envolver)\b.*$
+
+8|re|^\s*\b(já\s+temos|já\s+usamos|já\s+trabalhamos\s+com|já\s+avaliamos)\b.*$
+8|re|^\s*\b(o\s+fornecedor\s+atual|o\s+parceiro\s+atual|a\s+solução\s+atual)\b.*$
+8|re|^\s*\b(não\s+é\s+prioridade|não\s+está\s+no\s+planejamento|não\s+está\s+no\s+orçamento)\b.*$
+
+6|txt|a gente usa
+6|txt|nós usamos
+6|txt|hoje a gente faz
+6|txt|atualmente
+6|txt|no momento
+6|txt|depende
+6|txt|não temos
+6|txt|não conseguimos
+6|txt|o problema é
+6|txt|a dificuldade é
+6|txt|já usamos
+6|txt|já temos
+6|txt|precisa de aprovação
+6|txt|tem restrição

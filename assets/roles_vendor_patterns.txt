@@ -1,0 +1,75 @@
+9|re|^\s*\bboa(s)?\s+(tarde|noite|dia)\b.*$
+9|re|^\s*\b(meu\s+nome\s+é|quem\s+fala\s+é)\b.*$
+9|re|^\s*\b(eu\s+sou|falo)\s+(o|a)\s+(consultor|especialista|representante|executivo|atendente|vendedor)\b.*$
+9|re|^\s*\b(falo|ligo|estou\s+ligando)\s+(da|pela)\s+\w+.*$
+9|re|^\s*\b(com\s+quem\s+eu\s+tenho\s+o\s+prazer|quem\s+fala)\b.*$
+9|re|^\s*\b(posso\s+confirmar)\s+(seu\s+nome|seus\s+dados)\b.*$
+9|re|^\s*\b(poderia\s+me\s+confirmar\s+se\s+falo\s+com|posso\s+falar\s+com|seria\s+você)\b.*$
+
+8|re|^\s*\b(você\s+tem\s+um\s+minut(o|inho)|tem\s+alguns?\s+minutos?\s+agora|posso\s+tomar\s+dois?\s+minutos?)\b.*$
+8|re|^\s*\b(se\s+eu\s+não\s+estiver\s+atrapalhando|prometo\s+ser\s+breve|para\s+não\s+tomar\s+muito\s+seu\s+tempo)\b.*$
+8|re|^\s*\b(o\s+motivo\s+do\s+meu\s+contato|estou\s+entrando\s+em\s+contato\s+porque)\b.*$
+
+9|re|^\s*\b(posso|poderia)\s+(te|lhe)\s+fazer\s+uma\s+pergunta\b.*$
+9|re|^\s*\b(quero|gostaria|queria)\s+(de\s+)?(entender|compreender)\b.*$
+9|re|^\s*\b(vou\s+fazer|quero\s+fazer)\s+algumas?\s+perguntas?\b.*$
+9|re|^\s*\b(se\s+eu\s+(te|lhe)\s+fizer\s+algumas?\s+perguntas?)\b.*$
+
+9|re|^\s*\b(como|qual|quais|quanto|quantos|quantas|quando|onde|quem|por\s+que)\b.*\?\s*$
+8|re|^\s*\b(como|qual|quais|quanto|quantos|quantas|quando|onde|quem|por\s+que)\b.*$
+
+9|re|^\s*\b(como\s+vocês\s+(fazem|faz)\s+hoje|como\s+funciona\s+hoje|como\s+é\s+o\s+processo\s+atual|como\s+vocês\s+operam\s+atualmente)\b.*$
+9|re|^\s*\b(que\s+sistema\s+vocês\s+usam|qual\s+ferramenta\s+vocês\s+utilizam|vocês\s+usam\s+(erp|crm|planilha|excel|sistema))\b.*$
+9|re|^\s*\b(qual\s+é\s+o\s+cenário\s+atual|qual\s+é\s+o\s+fluxo\s+hoje|qual\s+é\s+a\s+rotina\s+atual)\b.*$
+
+9|re|^\s*\b(com\s+qual\s+frequência|com\s+que\s+periodicidade)\b.*$
+9|re|^\s*\b(qual\s+é\s+o\s+volume|qual\s+é\s+a\s+média|qual\s+é\s+o\s+tempo\s+médio|quanto\s+tempo\s+leva|quanto\s+tempo\s+vocês\s+gastam)\b.*$
+9|re|^\s*\bquant(o|a)s?\b.*\bpor\s+(dia|semana|mês|mes|ano)\b.*$
+9|re|^\s*\bquant(o|a)s?\s+(clientes|usuários|colaboradores|unidades|filiais|pedidos|chamados|atendimentos|cotações|propostas|skus|sku)\b.*$
+
+9|re|^\s*\b(quais\s+indicadores\s+vocês\s+acompanham|quais\s+métricas\s+vocês\s+acompanham|como\s+vocês\s+medem|como\s+vocês\s+monitoram)\b.*$
+8|re|^\s*\b(como\s+vocês\s+controlam|como\s+vocês\s+garantem|como\s+vocês\s+padronizam|como\s+vocês\s+documentam|como\s+vocês\s+registram|como\s+vocês\s+validam|como\s+vocês\s+aprovam)\b.*$
+
+9|re|^\s*\b(quem\s+é\s+responsável\s+por|quem\s+toma\s+decisão\s+sobre|quem\s+aprova|quem\s+usa)\b.*$
+9|re|^\s*\b(existe\s+alguém\s+mais\s+envolvido|além\s+de\s+você,\s+quem\s+participa|quem\s+mais\s+precisa\s+estar\s+na\s+conversa)\b.*$
+9|re|^\s*\b(como\s+fica\s+o\s+processo\s+de\s+aprovação|qual\s+é\s+o\s+workflow\s+de\s+aprovação|qual\s+é\s+o\s+fluxo\s+de\s+compras|qual\s+é\s+o\s+fluxo\s+de\s+contratação)\b.*$
+
+9|re|^\s*\b(quando\s+isso\s+acontece|com\s+que\s+frequência\s+isso\s+acontece)\b.*$
+9|re|^\s*\b(qual\s+é\s+o\s+principal\s+desafio|qual\s+é\s+a\s+principal\s+dificuldade|quais\s+são\s+os\s+gargalos|o\s+que\s+mais\s+gera\s+(retrabalho|atraso))\b.*$
+9|re|^\s*\b(vocês\s+enfrentam\b.*\bcom\s+frequência|vocês\s+sofrem\s+com|tem\s+acontecido|tem\s+ocorrido|já\s+aconteceu|quando\s+dá\s+errado)\b.*$
+
+9|re|^\s*\b(qual\s+é\s+o\s+impacto|qual\s+é\s+a\s+consequência|o\s+que\s+isso\s+(gera|provoca|acarret(a|aria)))\b.*$
+9|re|^\s*\b(qual\s+é\s+o\s+custo(\s+disso)?|quanto\s+isso\s+(custa|representa|impacta))\b.*$
+8|re|^\s*\b(qual\s+é\s+o\s+risco(\s+de)?|se\s+continuar\s+assim|se\s+nada\s+mudar|se\s+isso\s+persistir|pode\s+(levar|resultar)\s+em|qual\s+é\s+o\s+pior\s+cenário)\b.*$
+
+9|re|^\s*\b(se\s+vocês\s+pudessem|se\s+você\s+pudesse|imagine\s+se|e\s+se\s+vocês\s+conseguissem)\b.*$
+9|re|^\s*\b(se\s+isso\s+fosse\s+(automático|padronizado|em\s+tempo\s+real)|se\s+vocês\s+tivessem\s+(visibilidade|controle|previsibilidade))\b.*$
+9|re|^\s*\b(qual\s+seria\s+o\s+(benefício|ganho|resultado|valor)|como\s+seria|o\s+que\s+muda\s+(para\s+vocês|no\s+dia\s+a\s+dia))\b.*$
+
+8|re|^\s*\b(posso\s+(te|lhe)\s+(mostrar|explicar|compartilhar)|deixa\s+eu\s+(te|lhe)\s+(mostrar|explicar))\b.*$
+8|re|^\s*\b(nossa|nosso)\s+(solução|plataforma|sistema|serviço|produto)\b.*$
+7|re|^\s*\b(na\s+prática|de\s+forma\s+(simples|objetiva|rápida|segura)|sem\s+(complicar|impactar\s+a\s+operação|interromper|trocar\s+o\s+que\s+já\s+funciona))\b.*$
+
+8|re|^\s*\b(qual\s+é\s+o\s+próximo\s+passo|próximos\s+passos|podemos\s+(marcar|agendar)|posso\s+(agendar|marcar))\b.*$
+8|re|^\s*\b(uma\s+(reunião|call|conversa|demonstração|apresentação))\b.*$
+8|re|^\s*\b(quando\s+seria\s+melhor|qual\s+(horário|dia)\s+funciona|na\s+próxima\s+semana|ainda\s+esta\s+semana)\b.*$
+8|re|^\s*\b(posso\s+(te|lhe)\s+enviar|posso\s+mandar|posso\s+compartilhar\s+por\s+email|para\s+qual\s+email\s+eu\s+envio)\b.*$
+
+8|re|^\s*\b(antes\s+de\s+(encerrar|eu\s+te\s+liberar)|quer\s+que\s+eu\s+resuma|deixa\s+eu\s+(recapitular|resumir)|recapitulando)\b.*$
+8|re|^\s*\b(se\s+eu\s+entendi\s+corretamente|só\s+para\s+confirmar|deixa\s+eu\s+confirmar)\b.*$
+
+6|txt|posso te fazer uma pergunta
+6|txt|quero entender o cenário atual
+6|txt|como vocês fazem hoje
+6|txt|qual é o processo atual
+6|txt|com que frequência isso acontece
+6|txt|qual é o impacto disso
+6|txt|qual é a consequência disso
+6|txt|quanto isso custa
+6|txt|se nada mudar
+6|txt|e se vocês conseguissem
+6|txt|qual seria o benefício
+6|txt|podemos marcar uma demonstração
+6|txt|podemos agendar uma conversa
+6|txt|antes de encerrar
+6|txt|deixa eu recapitular
