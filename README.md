@@ -256,8 +256,10 @@ Exemplo de pasta utilizada no projeto:
 ## 4) Executar a transcrição (exemplo PowerShell com quebras de linha)
 
 Exemplo para processar todos os `.wav` da pasta `Arquivos_Audio`:
+(token e opcional, mas altamente recomendado)
 
 ```powershell
+$env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
 python .\scripts_base\01_transcricao.py `
   --input_dir ".\Arquivos_Audio" `
   --pattern "*.wav" `
