@@ -7,7 +7,6 @@ O artefato materializa-se em um **pipeline completo de análise automática de l
 * **Transcrição automática de áudio**
 * **Análise semântica via Modelos de Linguagem (LLM) em modo Zero-Shot**
 * **Avaliação estruturada baseada no método SPIN Selling (Rackham, 1988)**
-* **Visualização analítica por meio de painel interativo**
 
 O projeto foi concebido para atender simultaneamente a **rigor científico**, **aplicabilidade organizacional** e **reprodutibilidade metodológica**, respeitando princípios de **segurança, ética e uso responsável de dados**.
 
@@ -51,63 +50,22 @@ Este projeto utiliza Inteligência Artificial para **avaliar objetivamente a qua
 
 ## Visão Geral do Funcionamento do Artefato
 
-O artefato pode operar de duas formas:
+O artefato opera por meio de um fluxo local em Windows, com execução manual do pipeline:
 
-### ✔️ Modo Simplificado (Recomendado para Iniciantes)
-
-* Uso direto do **painel Streamlit**
-* Ideal para análise de resultados já processados
-
-### ✔️ Modo Completo (Execução Manual do Pipeline)
-
-* Execução sequencial dos scripts:
-
-  1. Transcrição de áudio
-  2. Análise SPIN via LLM (Zero-Shot)
-  3. Avaliação estruturada
-  4. Visualização no painel
+1. Transcrição de áudio (geração de TXT e JSON)
+2. Análise SPIN via LLM em modo Zero-Shot (geração de Excel)
 
 ---
 
 ## Arquitetura do Artefato
 
-O sistema foi construído sobre três pilares fundamentais:
+O sistema foi construído sobre dois pilares fundamentais:
 
 1. **Transcrição de Áudio**
-   Conversão de chamadas telefônicas (WAV) em texto estruturado.
+   Conversão de chamadas telefônicas (WAV) em texto estruturado (TXT) e metadados (JSON).
 
 2. **Análise Semântica via LLM (Zero-Shot)**
-   Classificação automática das falas segundo as fases do SPIN Selling, sem treinamento supervisionado.
-
-3. **Avaliação Estruturada**
-   Geração de indicadores objetivos de qualidade da condução consultiva.
-
----
-
-## Estrutura do Projeto
-
-```text
-Projeto Tele_IA Transcricao/
-│
-├─ scripts_base/
-│   ├─ 01_transcricao.py
-│   ├─ 02_zeroshot.py
-│   ├─ 03_avaliacao_zeroshot.py
-│   └─ 04_painel.py
-│
-├─ requirements/
-│   ├─ requirements_transcricao.txt
-│   ├─ requirements_zero_shot.txt
-│   └─ requirements_painel.txt
-│
-├─ arquivos_transcritos/      # não versionado
-├─ saida_excel/               # não versionado
-├─ saida_avaliacao/           # não versionado
-│
-├─ requirements.txt
-├─ .gitignore
-└─ README.md
-```
+   Classificação automática das falas segundo as fases do SPIN Selling, sem treinamento supervisionado, com geração de planilhas Excel para auditoria e uso organizacional.
 
 ---
 
@@ -119,367 +77,386 @@ Projeto Tele_IA Transcricao/
 * **Ollama instalado e em execução localmente (obrigatório)**
 
 ⚠️ **Este projeto NÃO utiliza VPS para execução local.**
-⚠️ **Os scripts 02 e 03 dependem obrigatoriamente do Ollama local.**
+⚠️ **O script 02 depende obrigatoriamente do Ollama local.**
 
 ---
 
 # 🚀 Como Rodar o Projeto (Guia Completo — Iniciantes e Avançados)
 
-Esta seção explica **passo a passo**, de forma **extremamente didática**, como executar o projeto **localmente**, desde a opção mais simples (apenas o painel) até o fluxo completo de processamento (**01 → 02 → 03 → Painel**).
-O texto foi escrito assumindo que o leitor **nunca programou**, **nunca usou PowerShell** e **não tem familiaridade com ambientes técnicos**.
+Esta seção explica, passo a passo e de forma didática, como executar o projeto **localmente no Windows**, utilizando **PowerShell** (e, opcionalmente, **VS Code**), no fluxo **01 → 02**.
 
-> ⚠️ **Aviso fundamental (leia com atenção):**
-> **Se o Ollama não estiver ativo, o projeto não roda corretamente.**
-> O Ollama é **obrigatório** para:
->
-> * executar corretamente o **painel local quando há avaliação**,
-> * executar o **02_zeroshot.py**,
-> * executar o **03_avaliacao_zeroshot.py**.
->
-> O fluxo **local NÃO usa VPS**.
+O texto foi escrito assumindo que o leitor nunca programou, nunca usou PowerShell e não tem familiaridade com ambientes técnicos.
+
+> Aviso fundamental:
+> Se o **Ollama** não estiver ativo, o projeto não executa corretamente a etapa **02_zeroshot.py**.
+> O fluxo local **não utiliza VPS**.
 
 ---
 
 ## 📌 Antes de começar (obrigatório)
 
-Antes de rodar o projeto, é necessário **instalar três ferramentas básicas** no computador. Todas são gratuitas.
+Antes de rodar o projeto, instale as ferramentas abaixo. Todas são gratuitas.
 
-### 1️⃣ Python 3.11 (obrigatório)
+### 1) Python 3.11 (obrigatório)
 
 O Python é a linguagem usada no projeto.
 
-* Site oficial para download:
-  [https://www.python.org/downloads/release/python-3110/](https://www.python.org/downloads/release/python-3110/)
+Link oficial (Python 3.11):
+[https://www.python.org/downloads/release/python-3110/](https://www.python.org/downloads/release/python-3110/)
 
 Durante a instalação:
 
-* Marque a opção **“Add Python to PATH”**
-* Clique em **Install**
+* Marque a opção **Add Python to PATH**
+* Conclua a instalação
 
-#### Como confirmar que o Python está instalado
+Como confirmar no PowerShell:
 
-1. Abra o **PowerShell** (veja abaixo como abrir).
-2. Digite:
+```powershell
+py -3.11 --version
+```
 
-   ```powershell
-   py -3.11 --version
-   ```
-3. O resultado esperado é algo parecido com:
+Resultado esperado (exemplo):
 
-   ```
-   Python 3.11.x
-   ```
+```
+Python 3.11.x
+```
 
 ---
 
-### 2️⃣ Git (obrigatório para baixar o projeto)
+### 2) Git (obrigatório para clonar o repositório)
 
-O Git é usado para **baixar o projeto do GitHub**.
+O Git é usado para baixar o projeto do GitHub.
 
-* Site oficial:
-  [https://git-scm.com/downloads](https://git-scm.com/downloads)
+Link oficial:
+[https://git-scm.com/downloads](https://git-scm.com/downloads)
 
-Instale aceitando as opções padrão.
-
-#### Como confirmar que o Git está instalado
-
-No PowerShell, digite:
+Como confirmar no PowerShell:
 
 ```powershell
 git --version
 ```
 
-Resultado esperado:
-
-```
-git version x.xx.x
-```
-
 ---
 
-### 3️⃣ Ollama (OBRIGATÓRIO)
+### 3) Ollama (obrigatório para a etapa 02)
 
-O Ollama é o motor de **Inteligência Artificial local (LLM)** usado pelo projeto.
+O Ollama é o motor local de LLM usado pela etapa 02.
 
-* Site oficial:
-  [https://ollama.com/download](https://ollama.com/download)
+Link oficial:
+[https://ollama.com/download](https://ollama.com/download)
 
-Após instalar, **o Ollama precisa estar ativo** sempre que você for:
-
-* rodar o painel local,
-* rodar o script 02,
-* rodar o script 03.
-
-#### Como confirmar que o Ollama está instalado
-
-No PowerShell:
+Como confirmar no PowerShell:
 
 ```powershell
 ollama --version
 ```
 
-#### Como iniciar o Ollama (passo obrigatório)
+Como iniciar o Ollama no Windows (passo obrigatório):
 
-Abra **uma janela separada do PowerShell** e execute:
+1. Abra **uma segunda janela** do PowerShell.
+2. Execute:
 
 ```powershell
 ollama serve
 ```
 
-✅ **Essa janela deve permanecer aberta** enquanto o projeto estiver sendo usado.
-Ela indica que o serviço de IA está ativo.
+Essa janela deve permanecer aberta enquanto você estiver executando a etapa 02.
+
+Modelo obrigatório (local):
+
+* O script 02 utiliza o modelo configurado por variável de ambiente `OLLAMA_MODEL`.
+* Valor esperado neste projeto: `qwen2.5:14b-instruct-q4_K_M`
+
+Opcionalmente, você pode definir no PowerShell (na janela onde rodará o script 02):
+
+```powershell
+$env:OLLAMA_MODEL="qwen2.5:14b-instruct-q4_K_M"
+```
 
 ---
 
-## 💻 O que é terminal e PowerShell (explicação simples)
+## 💻 O que é terminal e PowerShell
 
-* **Terminal / PowerShell** é uma janela onde você digita comandos.
-* No Windows:
+PowerShell é uma janela onde você digita comandos.
 
-  1. Clique no botão **Iniciar**
-  2. Digite **PowerShell**
-  3. Clique para abrir
+Para abrir no Windows:
 
-Durante este guia, **todos os comandos devem ser digitados no PowerShell**.
+1. Clique no menu Iniciar
+2. Digite **PowerShell**
+3. Abra o aplicativo
 
----
-
-## 📥 Baixar o projeto
-
-Você pode baixar o projeto de duas formas.
-
-### Opção 1 — Baixar como ZIP (mais simples para iniciantes)
-
-1. Acesse o repositório no GitHub.
-2. Clique no botão **Code**.
-3. Clique em **Download ZIP**.
-4. Extraia o arquivo ZIP.
-5. Abra a pasta extraída — esta será a pasta do projeto.
+Durante este guia, todos os comandos devem ser executados no PowerShell.
 
 ---
 
-### Opção 2 — Baixar via Git (recomendado)
+## 📥 Baixar o projeto (clonar via Git)
 
-No PowerShell, digite:
+No PowerShell, execute:
 
 ```powershell
 git clone https://github.com/pfcout/Artefato-de-I.A.-para-TTC.git
 cd Artefato-de-I.A.-para-TTC
 ```
 
-📌 O comando `cd` significa **“entrar na pasta”**.
+Observação:
+
+* O comando `cd` significa “entrar na pasta”.
 
 ---
 
-## 🧪 O que é venv e por que usamos aqui
+## 🧪 O que é venv e por que usamos
 
-Uma **venv (ambiente virtual)** é um ambiente isolado de Python usado para evitar conflitos entre bibliotecas.
+Uma **venv** (ambiente virtual) é um ambiente isolado do Python. Ela evita conflitos entre bibliotecas de projetos diferentes.
 
-Este projeto utiliza **três ambientes separados**, porque cada etapa tem dependências diferentes:
+Este projeto utiliza **dois ambientes separados**, porque as dependências de transcrição (01) são diferentes das dependências de análise (02):
 
-* `.venv_painel` → para o painel (04)
-* `.venv_transcricao` → para transcrição de áudio (01)
-* `.venv_zeroshot` → para análise e avaliação (02 e 03)
+* `.venv_transcricao` para o script 01
+* `.venv_zeroshot` para o script 02
 
 ---
 
-## 🪟 Regra importante: 1 janela por tarefa
+## 🪟 Regra importante: use duas janelas
 
 Use sempre:
 
-* **Uma janela do PowerShell** para rodar comandos do projeto
-* **Uma segunda janela do PowerShell** exclusivamente para manter:
-
-  ```powershell
-  ollama serve
-  ```
+* Janela 1: comandos do projeto (01 e 02)
+* Janela 2: manter o Ollama ativo com `ollama serve` (apenas para a etapa 02)
 
 ---
 
-# 🟢 Caminho A — Apenas Painel (iniciante absoluto)
+# 🟦 Etapa 01 — Transcrição local (scripts_base/01_transcricao.py)
 
-Este é o caminho **recomendado para iniciantes**.
+## 1) Criar e ativar o ambiente da transcrição
 
-### Passo 1 — Entrar na pasta do projeto
-
-No PowerShell:
+Na pasta do projeto, execute:
 
 ```powershell
-cd caminho\da\pasta\Artefato-de-I.A.-para-TTC
-```
-
----
-
-### Passo 2 — Criar o ambiente do painel
-
-```powershell
-py -3.11 -m venv .venv_painel
-```
-
----
-
-### Passo 3 — Ativar o ambiente
-
-```powershell
-.\.venv_painel\Scripts\Activate.ps1
-```
-
-Quando ativado, o terminal mostrará algo como:
-
-```
-(.venv_painel)
-```
-
----
-
-### Passo 4 — Atualizar ferramentas básicas
-
-```powershell
+py -3.11 -m venv .venv_transcricao
+.\.venv_transcricao\Scripts\Activate.ps1
 python -m pip install -U pip setuptools wheel
 ```
 
----
+Quando ativado, o terminal mostrará algo como `(.venv_transcricao)` no início da linha.
 
-### Passo 5 — Instalar dependências do painel
-
-```powershell
-python -m pip install -r requirements\requirements_painel.txt
-```
-
----
-
-### Passo 6 — Iniciar o painel
+## 2) Instalar dependências da transcrição
 
 ```powershell
-streamlit run scripts_base\04_painel.py
+python -m pip install -r requirements\requirements_transcricao.txt
 ```
 
-O navegador abrirá automaticamente em:
+## 3) Preparar os arquivos de entrada
 
-```
-http://localhost:8501
-```
+Coloque seus áudios `.wav` na pasta indicada pelo comando `--input_dir`.
 
-Para parar o painel:
+Exemplo de pasta utilizada no projeto:
 
-* Pressione **Ctrl + C** no PowerShell.
+* `arquivos_audio/`
 
----
+## 4) Executar a transcrição (exemplo PowerShell com quebras de linha)
 
-# 🔵 Caminho B — Pipeline Completo Manual (01 → 02 → 03 → Painel)
-
-## Etapa 01 — Transcrição de áudio
-
-* Crie o ambiente:
-
-  ```powershell
-  py -3.11 -m venv .venv_transcricao
-  ```
-* Ative:
-
-  ```powershell
-  .\.venv_transcricao\Scripts\Activate.ps1
-  ```
-* Instale dependências:
-
-  ```powershell
-  python -m pip install -r requirements\requirements_transcricao.txt
-  ```
-* Coloque arquivos WAV na pasta:
-
-  ```
-  bd_teste_audio/
-  ```
-* Execute:
-
-  ```powershell
-  python scripts_base\01_transcricao.py --input_dir bd_teste_audio --model small --language pt
-  ```
-
-📄 Saída esperada:
-
-```
-arquivos_transcritos/txt/
-arquivos_transcritos/json/
-```
-
----
-
-## Etapa 02 — Análise SPIN (Ollama obrigatório)
-
-⚠️ **Ollama deve estar ativo (`ollama serve`)**.
-
-* Crie o ambiente:
-
-  ```powershell
-  py -3.11 -m venv .venv_zeroshot
-  ```
-* Ative:
-
-  ```powershell
-  .\.venv_zeroshot\Scripts\Activate.ps1
-  ```
-* Instale dependências:
-
-  ```powershell
-  python -m pip install -r requirements\requirements_zero_shot.txt
-  ```
-* Execute:
-
-  ```powershell
-  python scripts_base\02_zeroshot.py
-  ```
-
-📊 Saída:
-
-```
-saida_excel/resultados_completos_SPIN.xlsx
-```
-
----
-
-## Etapa 03 — Avaliação estruturada (Ollama obrigatório)
-
-Com o Ollama ainda ativo:
+Exemplo para processar todos os `.wav` da pasta `arquivos_audio`:
 
 ```powershell
-python scripts_base\03_avaliacao_zeroshot.py
+python .\scripts_base\01_transcricao.py `
+  --input_dir ".\arquivos_audio" `
+  --pattern "*.wav" `
+  --recursive true `
+  --model large-v3 `
+  --language pt `
+  --beam_size 5 `
+  --vad_filter true `
+  --device auto
 ```
 
-📊 Saída:
+Observações importantes:
 
-```
-saida_avaliacao/excel/avaliacao_spin_avancada.xlsx
-```
+* `--device auto` tenta usar GPU se existir e, caso contrário, usa CPU automaticamente.
+* `HF_TOKEN` é opcional. Se não estiver configurado (ou se falhar), o script deve finalizar **sem travar**, gerando as saídas com fallback.
+
+## 5) Saídas esperadas após a etapa 01
+
+Após rodar, você deve ver:
+
+* `arquivos_transcritos/txt/` com arquivos `.txt`
+* `arquivos_transcritos/json/` com arquivos `.json`
+
+Checklist:
+
+* Existe `arquivos_transcritos/txt/<nome_do_audio>.txt`
+* Existe `arquivos_transcritos/json/<nome_do_audio>.json`
 
 ---
 
-## Etapa 04 — Painel local
+# 🔐 Diarização opcional com pyannote (HF_TOKEN)
 
-Ative o ambiente do painel:
+A diarização (separação de falas por participantes) é opcional e depende do `HF_TOKEN` e do aceite dos termos do modelo no Hugging Face.
+
+## 1) Criar conta no Hugging Face
+
+Acesse:
+[https://huggingface.co/](https://huggingface.co/)
+
+Crie uma conta e faça login.
+
+## 2) Gerar um Access Token (HF_TOKEN)
+
+Acesse a página oficial de tokens:
+[https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+
+Crie um token e copie o valor.
+
+## 3) Aceitar os termos do modelo pyannote
+
+A diarização depende do modelo:
+[https://huggingface.co/pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+
+Ao acessar essa página logado:
+
+* Leia os termos/licença do modelo
+* Clique para aceitar/requisitar acesso, quando o Hugging Face solicitar
+
+Sem esse aceite, o Hugging Face pode bloquear o download (acesso “gated”).
+
+## 4) Configurar HF_TOKEN no PowerShell (temporário)
+
+Na janela do PowerShell onde você executará o script 01:
 
 ```powershell
-.\.venv_painel\Scripts\Activate.ps1
+$env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
 ```
 
-Execute:
+Esse método vale apenas para a janela atual. Ao fechar o PowerShell, a variável é perdida.
 
-```powershell
-streamlit run scripts_base\04_painel.py
-```
+## 5) Configurar HF_TOKEN permanente no Windows (Variáveis de Ambiente)
+
+1. Abra o menu Iniciar e procure por **Editar as variáveis de ambiente do sistema**
+2. Clique em **Variáveis de Ambiente**
+3. Em **Variáveis do usuário** (ou do sistema, se preferir), clique em **Novo**
+4. Defina:
+
+   * Nome da variável: `HF_TOKEN`
+   * Valor da variável: seu token
+5. Confirme e reinicie o PowerShell
+
+## 6) Executar novamente a etapa 01 com HF_TOKEN
+
+Com o token configurado, execute novamente o 01 normalmente.
+Se o modelo estiver autorizado, a diarização será tentada automaticamente.
 
 ---
 
-# 🟡 Caminho C — Rodar apenas partes específicas
+## Erros comuns (HF_TOKEN / pyannote)
 
-* **Quero só transcrever (01):**
-  Use apenas `.venv_transcricao` e o script 01.
+### 1) HF_TOKEN ausente
 
-* **Já tenho TXT e quero rodar 02 e 03:**
-  Use `.venv_zeroshot`, mantenha o Ollama ativo e rode 02 → 03.
+Sintoma:
 
-* **Quero apenas visualizar resultados:**
-  Use apenas `.venv_painel` e o painel. (ollama ativo)
+* O script executa e gera as saídas, mas não realiza diarização.
+
+Ação:
+
+* Defina `HF_TOKEN` e tente novamente.
+
+### 2) Acesso gated não aceito (termos não aceitos)
+
+Sintoma:
+
+* Erros relacionados a acesso negado no download do modelo.
+
+Ação:
+
+* Acesse a página do modelo e aceite/requisite acesso:
+  [https://huggingface.co/pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+
+### 3) Token inválido
+
+Sintoma:
+
+* Erros indicando falha de autenticação.
+
+Ação:
+
+* Gere um novo token:
+  [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+* Atualize o `HF_TOKEN` no PowerShell ou nas variáveis do Windows.
+
+### 4) pyannote retornando “single speaker”
+
+Sintoma:
+
+* A diarização indica apenas um participante, ou o resultado final concentra falas em um único papel.
+
+Contexto:
+
+* Isso pode ocorrer em áudios curtos, com falas sobrepostas, baixa qualidade, ou quando o diarizador não separa corretamente.
+
+Comportamento esperado do projeto:
+
+* O script deve **continuar sem travar** e gerar saídas em modo fallback quando a diarização não for considerada confiável.
+
+---
+
+# 🟩 Etapa 02 — Análise SPIN Zero-Shot via Ollama (scripts_base/02_zeroshot.py)
+
+A etapa 02 lê os TXT gerados pela etapa 01 e produz planilhas Excel com o resultado da análise SPIN.
+
+Pré-requisito obrigatório:
+
+* O Ollama deve estar ativo na máquina com:
+
+```powershell
+ollama serve
+```
+
+## 1) Criar e ativar o ambiente do zero-shot
+
+Na pasta do projeto:
+
+```powershell
+py -3.11 -m venv .venv_zeroshot
+.\.venv_zeroshot\Scripts\Activate.ps1
+python -m pip install -U pip setuptools wheel
+```
+
+## 2) Instalar dependências do zero-shot
+
+```powershell
+python -m pip install -r requirements\requirements_zero_shot.txt
+```
+
+## 3) Executar a análise SPIN (exemplo PowerShell)
+
+Exemplo usando os caminhos padrão do projeto (entrada em `arquivos_transcritos/txt` e saída em `saida_excel`):
+
+```powershell
+$env:OLLAMA_MODEL="qwen2.5:14b-instruct-q4_K_M"
+
+python .\scripts_base\02_zeroshot.py `
+  --in_dir ".\arquivos_transcritos\txt" `
+  --out_dir ".\saida_excel" `
+  --pattern "*.txt" `
+  --recursive true `
+  --workers 1
+```
+
+Observações:
+
+* O script 02 lê prompts a partir de arquivos em `assets/`:
+
+  * `assets/Command_Core_D_Check_V2_6.txt`
+  * `assets/Command_Core_D_Check_V2_6_FALLBACK.txt`
+* O fallback é utilizado automaticamente quando necessário, sem interromper a execução.
+
+## 4) Saídas esperadas após a etapa 02
+
+Após rodar, você deve ver:
+
+* `saida_excel/` contendo arquivos Excel gerados para cada transcrição (por exemplo: `*_SPIN.xlsx`)
+
+Checklist:
+
+* Existe a pasta `saida_excel/`
+* Há arquivos `*_SPIN.xlsx` compatíveis com os TXT processados
 
 ---
 
