@@ -10,7 +10,6 @@ Arquivos:
 - Saída (default): saida_excel
 - Prompts (sempre lidos do arquivo):
   - assets/Command_Core_D_Check_V2_6.txt
-  - assets/Command_Core_D_Check_V2_6_FALLBACK.txt
 - Cache SQLite: cache_spin02/cache.db
 - Arquivamento de TXT processado: cachebd/ (move após processar)
 
