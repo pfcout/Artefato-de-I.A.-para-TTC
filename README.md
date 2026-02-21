@@ -144,8 +144,8 @@ O pipeline é linear, determinístico e sempre termina com geração de saída.
 
 ### Estrutura
 
-* Pasta obrigatória: `crachedbl/`
-* Banco SQLite: `crachedbl/cache.db`
+* Pasta obrigatória: `arquivos_historico_audio/`
+* Banco SQLite: `arquivos_historico_audio/cache.db`
 
 ### Cache Key
 
@@ -507,7 +507,7 @@ Se `--force` não estiver ativo:
 #### Cache HIT (status=ok)
 
 * Reconstrói Excel a partir do TSV canônico armazenado.
-* Move TXT para `cachebd/`.
+* Move TXT para `arquivos_historico_texto/`.
 * Não executa LLM.
 
 #### Cache MISS
