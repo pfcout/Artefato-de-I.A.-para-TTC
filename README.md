@@ -854,6 +854,28 @@ Resultado esperado (exemplo):
 Python 3.11.x
 ```
 
+Se nao funcionar faça esse outro caminho:
+
+1) Instale o Python pelo instalador “Windows installer (64-bit)” (.exe)
+
+Vá ao site oficial do Python ([python.org](https://www.python.org/downloads/)) → Downloads → Windows
+
+Baixe Windows installer (64-bit) (arquivo .exe)
+
+Rode o instalador e marque:
+
+✅ Add python.exe to PATH
+
+(Opcional) ✅ Install for all users (se quiser)
+
+3) Confirme que ficou OK
+
+Abra um novo Prompt/PowerShell e rode:
+
+```powershell
+python --version
+pip --version
+```
 ---
 
 ### 2) Git (obrigatório para clonar o repositório)
@@ -898,7 +920,7 @@ Essa janela deve permanecer aberta enquanto você estiver executando a etapa 02.
 Modelo obrigatório (local):
 
 * O script 02 utiliza o modelo configurado por variável de ambiente `OLLAMA_MODEL`.
-* Valor esperado neste projeto: `qwen2.5:14b-instruct-q4_K_M`
+* Valor esperado neste projeto: `qwen2.5:14b-instruct-q4_K_M` pode optar pro outro modelo, mas o resultado não e garantido para modelos inferiores.
 
 Opcionalmente, você pode definir no PowerShell (na janela onde rodará o script 02):
 
