@@ -68,6 +68,385 @@ O sistema foi construído sobre dois pilares fundamentais:
    Classificação automática das falas segundo as fases do SPIN Selling, sem treinamento supervisionado, com geração de planilhas Excel para auditoria e uso organizacional.
 
 ---
+# SPIN Analyzer
+
+## `scripts_base/01_transcricao.py`
+
+### Pipeline de Transcrição Robusta para Análise de Ligações Comerciais
+
+---
+
+## Visão Geral
+
+O `01_transcricao.py` é o pipeline principal de transcrição robusta do **SPIN Analyzer**, sistema de análise de ligações comerciais baseado em:
+
+* Transcrição automática de áudio (ASR)
+* Identificação de papéis (VENDEDOR / CLIENTE)
+* Estruturação de dados para análises posteriores
+
+O script foi projetado com foco explícito em **robustez operacional absoluta**.
+
+Ele:
+
+* Executa ASR com **`faster-whisper`**
+* Opcionalmente executa diarização com **`pyannote/speaker-diarization-3.1`**
+* Sempre gera saída TXT e JSON
+* Nunca quebra o pipeline por falhas externas
+* Possui cache inteligente com SQLite
+* Arquiva áudios processados
+* Possui fallback textual caso diarização falhe
+* Implementa sistema híbrido de definição de papéis
+* Garante previsibilidade operacional em ambiente Windows
+
+Este script é considerado o pipeline de produção resiliente do SPIN Analyzer.
+
+---
+
+## Arquitetura do Pipeline
+
+### Fluxo Geral
+
+1. Descoberta de áudios em `arquivos_audio/`
+2. Cálculo de hash SHA256 do áudio
+3. Cálculo de hash dos parâmetros relevantes do ASR
+4. Geração de `cache_key = sha256(audio) + sha256(params)`
+5. Consulta ao banco `crachedbl/cache.db`
+
+### Caso Cache HIT
+
+* Não reprocessa o áudio
+* Regera arquivos TXT e JSON a partir do banco
+* Move o áudio para `crachedbl/`
+* Finaliza rapidamente sem custo computacional
+
+### Caso Cache MISS
+
+Pipeline completo:
+
+1. Execução do ASR (`faster-whisper`)
+2. Merge inteligente de segmentos
+3. Split de turnos mistos
+4. Correção lexical via dicionário
+5. Diarização opcional (pyannote)
+6. Avaliação de qualidade da diarização
+7. Se diarização falhar → `role_by_text`
+8. Smoothing de papéis
+9. Geração de TXT final
+10. Geração de JSON estruturado
+11. Persistência no cache
+12. Arquivamento do áudio em `crachedbl/`
+
+O pipeline é linear, determinístico e sempre termina com geração de saída.
+
+---
+
+## Sistema de Cache Inteligente
+
+### Estrutura
+
+* Pasta obrigatória: `crachedbl/`
+* Banco SQLite: `crachedbl/cache.db`
+
+### Cache Key
+
+```
+sha256(audio_bytes) + sha256(params_relevantes)
+```
+
+Os parâmetros relevantes incluem:
+
+* Modelo ASR
+* Device
+* Compute type
+* Beam size
+* VAD
+* Linguagem
+
+### Comportamento
+
+* Se já processado e sem `--force`:
+
+  * Não reprocessa
+  * Regera saídas do banco
+* Após processamento:
+
+  * Áudio é movido para `crachedbl/`
+  * Conteúdo TXT/JSON é armazenado no SQLite
+
+### Benefícios
+
+* Redução drástica de custo GPU/CPU
+* Reprodutibilidade garantida
+* Eliminação de processamento redundante
+* Previsibilidade operacional
+* Idempotência do pipeline
+
+Permite forçar reprocessamento com:
+
+```
+--force
+```
+
+---
+
+## ASR — Faster Whisper
+
+Motor de transcrição baseado em `faster-whisper`.
+
+### Modelo
+
+Configurável via CLI
+Default: `large-v3`
+
+### Device
+
+```
+--device auto  → usa CUDA se disponível
+--device cuda  → tenta CUDA, fallback para CPU
+--device cpu   → força CPU
+```
+
+### Compute Type
+
+* GPU → `float16`
+* CPU → `int8`
+
+### Recursos
+
+* VAD opcional
+* Beam search configurável
+* Heartbeat de progresso
+* Tratamento completo de exceções
+
+O ASR nunca deve travar o pipeline. Qualquer falha é capturada e registrada.
+
+---
+
+## Merge Inteligente de Segmentos
+
+Problema: o ASR pode gerar fragmentação excessiva.
+
+Solução: merge heurístico baseado em:
+
+* Gap máximo entre segmentos
+* Ausência de pontuação final
+* Continuidade textual
+* Limite máximo de caracteres
+
+Benefícios:
+
+* Melhora legibilidade
+* Reduz ruído estrutural
+* Aumenta qualidade da classificação de papéis
+* Evita linhas artificialmente quebradas
+
+---
+
+## Split de Turnos Mistos
+
+Detecta frases compostas como:
+
+> "Perfeito. Pode me confirmar o CNPJ?"
+
+Processo:
+
+* Divide por sentença
+* Redistribui timestamps proporcionalmente
+* Limita número máximo de splits por segmento
+
+Impacto:
+
+* Reduz casos de VENDEDOR e CLIENTE na mesma linha
+* Melhora precisão da classificação híbrida
+
+---
+
+## Diarização (Opcional)
+
+Modelo utilizado:
+
+`pyannote/speaker-diarization-3.1`
+
+Requisitos:
+
+* `HF_TOKEN`
+* Dependências instaladas
+
+### Garantias
+
+* Nunca pode quebrar o pipeline
+* Falhas são capturadas
+* Pipeline continua via fallback textual
+
+### Avaliação de Qualidade
+
+Critérios:
+
+* `DIAR_COLLAPSE_MAX_SHARE`
+* `DIAR_MIN_COVERAGE`
+
+Se:
+
+* Apenas 1 speaker detectado
+* > 90% do tempo em um speaker
+* Cobertura insuficiente
+
+→ Diarização é considerada inválida
+→ Fallback textual é acionado
+
+Diarização é tratada como melhoria, nunca como dependência crítica.
+
+---
+
+## Fallback Textual — `role_by_text`
+
+Quando diarização falha, entra o sistema textual híbrido.
+
+Arquivos:
+
+* `assets/roles_vendor_patterns.txt`
+* `assets/roles_client_patterns.txt`
+
+Suporte a:
+
+* Regex
+* Substring
+* Fuzzy matching (rapidfuzz / fuzzywuzzy)
+
+### Lógica
+
+* Score para vendedor
+* Score para cliente
+* Heurísticas adicionais:
+
+  * Perguntas → tendem a vendedor
+  * Respostas curtas → tendem a cliente
+  * Pós-pergunta forte → ajuste contextual
+  * Frases de condução → reforço vendedor
+
+Calcula:
+
+* `vendor_score`
+* `client_score`
+* `role_conf`
+
+Garante continuidade mesmo sem diarização.
+
+---
+
+## Smoothing de Papéis
+
+Etapa pós-classificação.
+
+Remove:
+
+* “Ilhas” (ex: VENDEDOR entre dois CLIENTE)
+* Inconsistências pós-pergunta forte
+
+Usa limiar:
+
+```
+ROLE_STRONG_MIN
+```
+
+Aumenta consistência narrativa da conversa.
+
+---
+
+## Saídas Garantidas
+
+Sempre gera:
+
+* TXT → `arquivos_transcritos/txt`
+* JSON → `arquivos_transcritos/json`
+
+### Estrutura do JSON
+
+```json
+{
+  "meta": {...},
+  "segments": [...],
+  "roles": {...},
+  "stats": {...},
+  "errors": [...]
+}
+```
+
+Contém:
+
+* Metadados do processamento
+* Segmentos com timestamps
+* Papéis atribuídos
+* Estatísticas agregadas
+* Erros capturados (sem quebrar execução)
+
+---
+
+## Garantias de Robustez
+
+O script garante:
+
+* Nunca quebra por ausência de HF_TOKEN
+* Nunca quebra por erro de diarização
+* Nunca falha silenciosamente
+* Sempre produz saída
+* Logs detalhados por etapa
+* Heartbeat de progresso
+* Tratamento extensivo de exceções
+* Pipeline determinístico
+
+Foi projetado para rodar em ambiente Windows com previsibilidade.
+
+---
+
+## Estrutura de Pastas
+
+```
+arquivos_audio/          → áudios brutos
+arquivos_transcritos/    → saídas finais
+  ├── txt/
+  └── json/
+assets/                  → dicionários e padrões
+crachedbl/               → cache + áudios arquivados
+scripts_base/            → scripts principais
+```
+
+---
+
+#  Filosofia do Design
+
+Este script foi construído com foco em:
+
+* Robustez > elegância
+* Reprodutibilidade
+* Previsibilidade operacional
+* Redução de custo computacional
+* Idempotência
+* Resiliência a falhas externas
+* Operação estável em ambiente Windows
+
+Cada dependência externa é tratada como potencial ponto de falha.
+
+O sistema foi desenhado para continuar operando mesmo sob degradação parcial.
+
+---
+
+## Conclusão Técnica
+
+O `01_transcricao.py` é o pipeline de produção robusto do SPIN Analyzer.
+
+Ele foi projetado para:
+
+* Operar de forma resiliente
+* Manter consistência estrutural
+* Minimizar custo computacional
+* Garantir saída sempre disponível
+* Proteger o sistema contra falhas de diarização e dependências externas
+
+Trata-se de um pipeline orientado à confiabilidade operacional, preparado para uso contínuo em ambiente real de produção.
+
+
+---
 
 ## Requisitos Técnicos Obrigatórios
 
