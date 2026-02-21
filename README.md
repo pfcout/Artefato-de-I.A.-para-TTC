@@ -222,71 +222,6 @@ Use sempre:
 * Janela 1: comandos do projeto (01 e 02)
 * Janela 2: manter o Ollama ativo com `ollama serve` (apenas para a etapa 02)
 
----
-
-# 🟦 Etapa 01 — Transcrição local (scripts_base/01_transcricao.py)
-
-## 1) Criar e ativar o ambiente da transcrição
-
-Na pasta do projeto, execute:
-
-```powershell
-py -3.11 -m venv .venv_transcricao
-.\.venv_transcricao\Scripts\Activate.ps1
-python -m pip install -U pip setuptools wheel
-```
-
-Quando ativado, o terminal mostrará algo como `(.venv_transcricao)` no início da linha.
-
-## 2) Instalar dependências da transcrição
-
-```powershell
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -r requirements\requirements_transcricao.txt
-```
-
-## 3) Preparar os arquivos de entrada
-
-Coloque seus áudios `.wav` na pasta indicada pelo comando `--input_dir`.
-
-Exemplo de pasta utilizada no projeto:
-
-* `Arquivos_Audio/`
-
-## 4) Executar a transcrição (exemplo PowerShell com quebras de linha)
-
-Exemplo para processar todos os `.wav` da pasta `Arquivos_Audio`:
-(token e opcional, mas altamente recomendado)
-
-```powershell
-$env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
-python .\scripts_base\01_transcricao.py `
-  --input_dir ".\Arquivos_Audio" `
-  --pattern "*.wav" `
-  --recursive true `
-  --model large-v3 `
-  --language pt `
-  --beam_size 5 `
-  --vad_filter true `
-  --device auto
-```
-
-Observações importantes:
-
-* `--device auto` tenta usar GPU se existir e, caso contrário, usa CPU automaticamente.
-* `HF_TOKEN` é opcional. Se não estiver configurado (ou se falhar), o script deve finalizar **sem travar**, gerando as saídas com fallback.
-
-## 5) Saídas esperadas após a etapa 01
-
-Após rodar, você deve ver:
-
-* `arquivos_transcritos/txt/` com arquivos `.txt`
-* `arquivos_transcritos/json/` com arquivos `.json`
-
-Checklist:
-
-* Existe `arquivos_transcritos/txt/<nome_do_audio>.txt`
-* Existe `arquivos_transcritos/json/<nome_do_audio>.json`
 
 ---
 
@@ -396,6 +331,80 @@ Contexto:
 Comportamento esperado do projeto:
 
 * O script deve **continuar sem travar** e gerar saídas em modo fallback quando a diarização não for considerada confiável.
+
+---
+
+# 🟦 Etapa 01 — Transcrição local (scripts_base/01_transcricao.py)
+
+## 1) Criar e ativar o ambiente da transcrição
+
+Na pasta do projeto, execute:
+
+```powershell
+py -3.11 -m venv .venv_transcricao
+.\.venv_transcricao\Scripts\Activate.ps1
+python -m pip install -U pip setuptools wheel
+```
+
+Quando ativado, o terminal mostrará algo como `(.venv_transcricao)` no início da linha.
+
+## 2) Instalar dependências da transcrição
+
+```powershell
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements\requirements_transcricao.txt
+```
+
+## 3) Preparar os arquivos de entrada
+
+Coloque seus áudios `.wav` na pasta indicada pelo comando `--input_dir`.
+
+Pasta utilizada no projeto:
+
+* `arquivos_audio/`
+
+## 4) Executar a transcrição (exemplo PowerShell com quebras de linha)
+
+Exemplo para processar todos os `.wav` da pasta `arquivos_audio`:
+(token e opcional, mas altamente recomendado)
+
+```powershell
+$env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
+python .\scripts_base\01_transcricao.py `
+  --input_dir ".\arquivos_audio" `
+  --pattern "*.wav" `
+  --recursive true `
+  --model large-v3 `
+  --language pt `
+  --beam_size 5 `
+  --vad_filter true `
+  --device auto
+```
+
+Observações importantes:
+
+* `--device auto` tenta usar GPU se existir e, caso contrário, usa CPU automaticamente.
+* `HF_TOKEN` é opcional. Se não estiver configurado (ou se falhar), o script deve finalizar **sem travar**, gerando as saídas com fallback.
+
+## 5) Saídas esperadas após a etapa 01
+
+Após rodar, você deve ver:
+
+* `arquivos_transcritos/txt/` com arquivos `.txt`
+* `arquivos_transcritos/json/` com arquivos `.json`
+
+Checklist:
+
+* Existe `arquivos_transcritos/txt/<nome_do_audio>.txt`
+* Existe `arquivos_transcritos/json/<nome_do_audio>.json`
+
+---
+
+Antes de Aplicar atualizações em outra venv saia da antiga para evitar erros:
+
+```powershell
+deactivate
+```
 
 ---
 
