@@ -117,19 +117,19 @@ def _env_float(name: str, default: float) -> float:
 
 OLLAMA_URL = _env_str("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 OLLAMA_MODEL = _env_str("OLLAMA_MODEL", "qwen2.5:14b-instruct-q4_K_M")
-OLLAMA_TIMEOUT_S = _env_int("OLLAMA_TIMEOUT_S", 900)
+OLLAMA_TIMEOUT_S = _env_int("OLLAMA_TIMEOUT_S", 1800)
 OLLAMA_TIMEOUT_RETRIES = _env_int("OLLAMA_TIMEOUT_RETRIES", 1)
 OLLAMA_KEEP_ALIVE = _env_str("OLLAMA_KEEP_ALIVE", "30m")
 
 OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.0)
-OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 2048)
+OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 4096)
 OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 220)
 OLLAMA_TOP_P = _env_float("OLLAMA_TOP_P", 0.9)
 OLLAMA_REPEAT_PENALTY = _env_float("OLLAMA_REPEAT_PENALTY", 1.06)
 
 SPIN_VENDOR_ONLY = (_env_str("SPIN_VENDOR_ONLY", "1") != "0")
-SPIN_MAX_LINES_TOTAL = _env_int("SPIN_MAX_LINES_TOTAL", 260)
-SPIN_MAX_CHARS_TOTAL = _env_int("SPIN_MAX_CHARS_TOTAL", 12000)
+SPIN_MAX_LINES_TOTAL = _env_int("SPIN_MAX_LINES_TOTAL", 500)
+SPIN_MAX_CHARS_TOTAL = _env_int("SPIN_MAX_CHARS_TOTAL", 25000)
 
 # Heartbeat enquanto o Ollama roda (para mostrar que não travou)
 HEARTBEAT_EVERY_S = _env_int("SPIN_HEARTBEAT_EVERY_S", 25)
@@ -705,7 +705,7 @@ def process_one(
             tsv_raw_best = res_main.raw_tsv
             rows_best = res_main.table_rows
 
-            # Se ALL-ZERO, faz verificação secundária (silenciosa)
+            # Se ALL-ZERO, faz verificação secundária
             if prompt_alt.strip() and is_all_zero_rows(rows_best):
                 res_alt = run_once(prompt_alt, in_path.name, text_for_llm, logger=logger, quiet=True)
                 if res_alt.ok and (not is_all_zero_rows(res_alt.table_rows)):
@@ -721,7 +721,7 @@ def process_one(
             safe_move_to_archive(in_path, in_root, logger)
             return JobResult(ok=True, in_path=in_path, out_xlsx=out_xlsx, used_cache=False, error="")
 
-        # Se inválido, tenta alternativa (silenciosa)
+        # Se inválido, tenta alternativa
         err_msg = res_main.error or "invalid_tsv"
         tsv_raw_best = res_main.raw_tsv or ""
 
