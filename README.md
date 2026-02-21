@@ -802,6 +802,14 @@ Ele transforma um modelo generativo probabilístico em um componente previsível
 
 ---
 
+# Perguntas_SPIN
+
+Esta seção apresenta perguntas de caráter exemplificativo, concebidas como referência metodológica para a aplicação dos princípios do **SPIN Selling**. 
+
+O objetivo é fornecer suporte conceitual e orientações analíticas, sem pretender esgotar o tema ou representar um conjunto definitivo. Dessa forma, esta seção funciona como um instrumento pedagógico e de consulta, auxiliando na compreensão da estrutura e da lógica que orientam a formulação de questionamentos estratégicos dentro do contexto de vendas consultivas.
+
+---
+
 ## Requisitos Técnicos Obrigatórios
 
 * **Python 3.11** (obrigatório)
