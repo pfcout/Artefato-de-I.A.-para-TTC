@@ -82,7 +82,7 @@ except Exception:
 _AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac", ".wma", ".mp4"}
 DEFAULT_LANG = "pt"
 
-CACHE_DIR_NAME = "crachedbl"
+CACHE_DIR_NAME = "arquivos_historico_audio"
 CACHE_DB_NAME = "cache.db"
 
 # Diarização (qualidade mínima)
