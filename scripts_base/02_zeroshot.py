@@ -74,7 +74,7 @@ BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent
 
 DEFAULT_IN_DIR = ROOT_DIR / "arquivos_transcritos" / "txt"
-DEFAULT_OUT_DIR = ROOT_DIR / "saida_excel"
+DEFAULT_OUT_DIR = ROOT_DIR / "saida_excel_zero_shot"
 
 ASSETS_DIR = ROOT_DIR / "assets"
 PROMPT_MAIN_PATH = ASSETS_DIR / "Command_Core_D_Check_V2_6.txt"
@@ -86,7 +86,7 @@ LOG_FILE = LOG_DIR / "spin02.log"
 CACHE_DIR_DEFAULT = ROOT_DIR / "cache_spin02"
 CACHE_DB_PATH = CACHE_DIR_DEFAULT / "cache.db"
 
-ARCHIVE_DIR = ROOT_DIR / "cachebd"  # pasta pedida para mover os TXT já processados
+ARCHIVE_DIR = ROOT_DIR / "arquivos_historico_texto"  # pasta pedida para mover os TXT já processados
 
 
 # ============================================================
