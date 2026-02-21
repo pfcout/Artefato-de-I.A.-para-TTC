@@ -170,7 +170,7 @@ Os parâmetros relevantes incluem:
   * Regera saídas do banco
 * Após processamento:
 
-  * Áudio é movido para `crachedbl/`
+  * Áudio é movido para `arquivos_historico_audio/`
   * Conteúdo TXT/JSON é armazenado no SQLite
 
 ### Benefícios
@@ -445,6 +445,360 @@ Ele foi projetado para:
 
 Trata-se de um pipeline orientado à confiabilidade operacional, preparado para uso contínuo em ambiente real de produção.
 
+---
+
+# SPIN Analyzer — `scripts_base/02_zeroshot.py`
+
+## Visão Geral
+
+O `02_zeroshot.py` é o módulo de avaliação automática SPIN do projeto **SPIN Analyzer**.
+Ele representa a segunda etapa do pipeline:
+
+```
+TXT transcrito → LLM (Ollama local) → TSV estruturado → Excel individual por ligação
+```
+
+Responsabilidades principais:
+
+* Ler arquivos `.txt` previamente transcritos.
+* Enviar o conteúdo ao modelo local via Ollama.
+* Exigir saída estritamente no formato TSV.
+* Canonicalizar a saída para um padrão fixo.
+* Gerar um Excel individual por ligação.
+* Utilizar cache determinístico baseado em SQLite.
+* Arquivar automaticamente o TXT processado.
+* Garantir que o pipeline nunca quebre operacionalmente.
+
+O módulo foi projetado para execução local em Windows, com foco em previsibilidade operacional, determinismo e tolerância a variações do modelo.
+
+---
+
+## Arquitetura Geral do Fluxo
+
+### 2.1 Descoberta de Arquivos
+
+* Varre a pasta de entrada (`--in_dir`)
+* Suporta busca recursiva (`--recursive`)
+* Filtra por padrão (`--pattern`, default `*.txt`)
+
+### 2.2 Preparação do Texto
+
+1. Leitura do TXT.
+2. Aplicação opcional de Vendor-only filtering.
+3. Limitação de tamanho:
+
+   * Máximo de linhas (`SPIN_MAX_LINES_TOTAL`)
+   * Máximo de caracteres (`SPIN_MAX_CHARS_TOTAL`)
+4. Geração de `text_sha256` do texto final enviado ao LLM.
+5. Geração de `prompt_sha256`.
+6. Construção da cache key determinística:
+
+```
+spin02|v8_1_1|<model>|prompt=<sha>|text=<sha>|vendor_only=<0/1>
+→ sha256 final
+```
+
+### 2.3 Consulta ao Cache SQLite
+
+Se `--force` não estiver ativo:
+
+* Consulta pelo `cache_key`.
+
+#### Cache HIT (status=ok)
+
+* Reconstrói Excel a partir do TSV canônico armazenado.
+* Move TXT para `cachebd/`.
+* Não executa LLM.
+
+#### Cache MISS
+
+* Executa Ollama.
+* Realiza parsing tolerante.
+* Se ALL-ZERO → executa prompt alternativo.
+* Canonicaliza TSV.
+* Salva no cache.
+* Gera Excel.
+* Move TXT para archive.
+
+O pipeline é idempotente e determinístico.
+Para o mesmo texto + prompt + modelo + flag vendor-only, o resultado é reproduzível.
+
+---
+
+## Integração com Ollama
+
+A comunicação é feita via HTTP direto para:
+
+```
+/api/generate
+```
+
+Configurações via variáveis de ambiente:
+
+* `OLLAMA_MODEL`
+* `OLLAMA_URL`
+* `OLLAMA_TIMEOUT_S`
+* `OLLAMA_NUM_CTX`
+* `OLLAMA_TEMPERATURE`
+* `OLLAMA_NUM_PREDICT`
+* `OLLAMA_TOP_P`
+* `OLLAMA_REPEAT_PENALTY`
+
+### Estratégias de Estabilidade
+
+* `temperature = 0.0` (determinismo)
+* `stop tokens` definidos
+* `stream = False` (sem dependência de streaming)
+* Retry controlado
+* Timeout configurável
+* Heartbeat periódico para evitar sensação de travamento
+
+A temperatura zero é essencial para estabilidade de avaliação, evitando variação estrutural na saída TSV e reduzindo divergência entre execuções.
+
+---
+
+## Engenharia de Prompt
+
+O prompt nunca é hardcoded.
+
+Sempre é lido de:
+
+```
+assets/Command_Core_D_Check_V2_6.txt
+```
+
+Substituições dinâmicas:
+
+* `{NOME_DO_ARQUIVO_ANEXADO}`
+* `{DATA_ANALISE}`
+
+O prompt exige explicitamente:
+
+* 1 header TSV
+* 5 linhas (P0 a P4)
+* Nenhum texto adicional
+
+Esse design reduz variabilidade estrutural do modelo e força saída alinhada ao parser.
+
+---
+
+## Parsing TSV Tolerante
+
+O modelo pode retornar variações como:
+
+* Tabs
+* Espaços múltiplos
+* Pipes (`|`)
+* Coluna extra RESULTADO
+* Sem header
+* Texto extra antes/depois
+
+O parser:
+
+* Remove lixo textual.
+* Detecta fases `P0_abertura` a `P4_need_payoff`.
+* Extrai apenas valores `0` ou `1`.
+* Converte `true/false`, `1.0`, etc.
+* Ignora colunas extras.
+* Reconstrói TSV canônico fixo:
+
+```
+SPIN SELLING    CHECK_01    CHECK_02
+P0_abertura     0/1         0/1
+...
+```
+
+Exige todas as 5 fases.
+Se faltar qualquer fase → falha controlada.
+
+Esse mecanismo torna o sistema robusto contra pequenas variações do LLM.
+
+---
+
+## Cache Determinístico (SQLite)
+
+Banco:
+
+```
+cache_spin02/cache.db
+```
+
+Cache key inclui:
+
+* Versão do script
+* Modelo
+* Hash do prompt
+* Hash do texto final
+* Flag vendor-only
+
+Estrutura armazenada:
+
+* `status` (ok/fail)
+* `tsv_raw`
+* `error`
+* `timestamp`
+* `text_sha256`
+* `prompt_sha256`
+* `model`
+
+Garantias:
+
+* Reprodutibilidade
+* Economia de GPU/CPU
+* Reexecução instantânea
+* Proteção contra alterações acidentais
+
+---
+
+## Geração de Excel
+
+Um Excel por ligação:
+
+```
+<arquivo>_SPIN.xlsx
+```
+
+Planilha única (`Planilha1`).
+
+Estrutura:
+
+| Coluna | Conteúdo        |
+| ------ | --------------- |
+| A      | Fase            |
+| B      | CHECK_01        |
+| C      | CHECK_02        |
+| D      | RESULTADO TEXTO |
+
+Valores:
+
+* Normalizados para inteiro (0 ou 1)
+* RESULTADO TEXTO:
+
+  * IDÊNTICO
+  * DIFERENTE
+
+O Excel é sempre gerado — inclusive em falhas.
+
+---
+
+## Vendor-Only Mode
+
+Controlado por:
+
+```
+SPIN_VENDOR_ONLY
+```
+
+Quando ativo:
+
+* Extrai apenas falas marcadas como:
+
+  * VENDEDOR
+  * AGENTE
+  * ATENDENTE
+* Ignora CLIENTE.
+
+Benefícios:
+
+* Reduz ruído.
+* Diminui tokens.
+* Aumenta consistência da avaliação.
+* Reduz custo computacional.
+
+---
+
+## Arquivamento Automático
+
+Após processamento:
+
+* TXT é movido para `arquivos_historico_texto/`.
+* Estrutura relativa é preservada.
+* Se já existir, adiciona timestamp.
+
+Isso evita reprocessamento acidental e mantém histórico.
+
+---
+
+## CLI
+
+Argumentos disponíveis:
+
+```
+--in_dir
+--out_dir
+--pattern
+--recursive
+--workers
+--force
+--quiet
+```
+
+### Multi-thread
+
+Se `--workers > 1`:
+
+* Usa `ThreadPoolExecutor`.
+* Processa arquivos em paralelo.
+* Mantém controle de progresso e ETA.
+
+---
+
+## Garantias de Robustez
+
+O sistema:
+
+* Nunca quebra por erro do modelo.
+* Nunca quebra por parsing inválido.
+* Sempre gera Excel.
+* Sempre registra erro.
+* Sempre salva no cache.
+* Nunca depende de streaming.
+* Nunca depende de GPU específica.
+* Opera totalmente offline via Ollama.
+
+---
+
+## Controle de Custo Computacional
+
+Mecanismos de controle:
+
+* Cache reduz chamadas ao LLM.
+* Vendor-only reduz tokens.
+* Limite de linhas e caracteres.
+* Temperatura zero evita divergência.
+* Prompt alternativo executa apenas quando necessário.
+* Reexecução por cache é instantânea.
+
+---
+
+## Filosofia de Design
+
+O `02_zeroshot.py` foi projetado com foco em:
+
+* Determinismo
+* Tolerância a variações do LLM
+* Segurança operacional
+* Reprocessamento previsível
+* Compatibilidade total com Windows
+* Operação offline via Ollama
+* Idempotência estrutural
+
+Ele assume que modelos são probabilísticos e potencialmente inconsistentes, e constrói uma camada determinística acima deles.
+
+---
+
+## Conclusão Técnica
+
+O `02_zeroshot.py` é o módulo de avaliação automatizada determinística do SPIN Analyzer.
+
+Ele transforma um modelo generativo probabilístico em um componente previsível, auditável e resiliente de produção, garantindo que:
+
+* A avaliação SPIN seja reproduzível.
+* O pipeline nunca interrompa.
+* O custo computacional seja controlado.
+* A operação seja estável em ambiente Windows local.
+
+É um módulo arquitetado para confiabilidade operacional mesmo sob comportamento imprevisível do modelo.
 
 ---
 
