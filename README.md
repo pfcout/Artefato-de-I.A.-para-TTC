@@ -1122,6 +1122,8 @@ python -m pip install -r requirements\requirements_transcricao.txt
 
 Coloque seus áudios `.wav` na pasta indicada pelo comando `--input_dir`.
 
+AVISO: Recomenda-se 1 Arquivo por Vez
+
 Pasta utilizada no projeto:
 
 * `arquivos_audio/`
@@ -1140,7 +1142,7 @@ python .\scripts_base\01_transcricao.py `
   --model large-v3 `
   --language pt `
   --beam_size 5 `
-  --vad_filter true `
+  --vad_filter false `
   --device auto
 ```
 
