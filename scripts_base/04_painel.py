@@ -1256,14 +1256,14 @@ if lr and lr.get("excel_bytes"):
     render_excel_open(
         excel_bytes=lr.get("excel_bytes", b""),
         title="Planilha aberta",
-        subtitle="Visualização ampla com rolagem horizontal e vertical, com limpeza de linhas em branco ao final.",
+        subtitle="Visualização ampla com rolagem horizontal e vertical.",
     )
 
     st.markdown(
         """
 <div class="card">
   <div class="section-title">Download</div>
-  <div class="smallmuted">Baixe a planilha para arquivamento, auditoria e compartilhamento interno.</div>
+  <div class="smallmuted">Baixe a planilha e a transcrição limpa.</div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -1272,6 +1272,7 @@ if lr and lr.get("excel_bytes"):
     filename = lr.get("filename") or f"avaliacao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     base = Path(filename).stem
 
+    # Download da planilha
     st.download_button(
         "Baixar planilha",
         data=lr.get("excel_bytes", b""),
@@ -1281,15 +1282,18 @@ if lr and lr.get("excel_bytes"):
         key=f"dl_single_{base}",
     )
 
+    # 🔹 TRANSCRIÇÃO LIMPA — MANTÉM NOME ORIGINAL DO TXT
     if str(lr.get("kind") or "").lower().startswith("áudio") and lr.get("txt_bytes"):
-        txt_name = lr.get("txt_name") or f"{base}_transcricao.txt"
+
+        txt_filename = Path(lr.get("filename") or "transcricao.txt").stem + ".txt"
+
         st.download_button(
             "Baixar transcrição",
             data=lr.get("txt_bytes", b""),
-            file_name=Path(txt_name).name,
+            file_name=txt_filename,
             mime="text/plain",
             use_container_width=True,
-            key=f"dl_single_txt_{base}",
+            key=f"dl_single_txt_clean_{base}",
         )
 
 
@@ -1303,22 +1307,12 @@ if br:
 
     render_hero(
         title="Resultados do lote",
-        subtitle="As planilhas individuais já estão abertas abaixo. Use os downloads para auditoria e compartilhamento.",
+        subtitle="Planilhas abertas abaixo, prontas para leitura e download.",
         pills=[
             "<span class='pill ok'><span class='dot'></span>Planilhas abertas</span>",
             "<span class='pill'><span class='dot'></span>Downloads individuais</span>",
         ],
         icon="📁",
-    )
-
-    st.markdown(
-        """
-<div class="card">
-  <div class="section-title">Planilhas individuais</div>
-  <div class="smallmuted">Abra, confira e faça o download de cada item no mesmo local.</div>
-</div>
-""",
-        unsafe_allow_html=True,
     )
 
     for item in br:
@@ -1328,11 +1322,12 @@ if br:
 
         with st.expander(f"{idx}. {filename}", expanded=True):
             xb = item.get("excel_individual_bytes", b"")
+
             if xb:
                 render_excel_open(
                     excel_bytes=xb,
                     title="Planilha aberta",
-                    subtitle="Visualização ampla e legível, com rolagem horizontal e vertical.",
+                    subtitle="Visualização ampla e legível.",
                 )
 
                 st.download_button(
@@ -1344,15 +1339,18 @@ if br:
                     key=f"dl_item_{idx}_{base}",
                 )
 
+                # 🔹 TRANSCRIÇÃO LIMPA — MANTÉM NOME ORIGINAL
                 if item.get("txt_bytes"):
-                    txt_name = item.get("txt_name") or f"{base}_transcricao.txt"
+
+                    txt_filename = Path(filename).stem + ".txt"
+
                     st.download_button(
                         "Baixar transcrição",
                         data=item.get("txt_bytes", b""),
-                        file_name=Path(txt_name).name,
+                        file_name=txt_filename,
                         mime="text/plain",
                         use_container_width=True,
-                        key=f"dl_item_txt_{idx}_{base}",
+                        key=f"dl_item_txt_clean_{idx}_{base}",
                     )
             else:
                 st.warning("Planilha individual não disponível para este item.")
