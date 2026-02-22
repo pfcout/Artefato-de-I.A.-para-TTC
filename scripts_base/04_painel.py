@@ -1047,6 +1047,7 @@ with st.sidebar:
 # Telas
 # ==============================
 if st.session_state["view"] == "single":
+
     st.markdown("### Avaliação individual")
 
     st.session_state["single_mode"] = st.radio(
@@ -1056,29 +1057,72 @@ if st.session_state["view"] == "single":
         key="single_mode_radio",
     )
 
+    # Controle de mudança de modo
     if st.session_state["single_mode"] != st.session_state["_prev_single_mode"]:
         clear_single()
         st.session_state["_prev_single_mode"] = st.session_state["single_mode"]
 
+    # Espaço leve abaixo do hero
+    st.markdown(
+        "<div style='margin-top: 25px;'></div>",
+        unsafe_allow_html=True
+    )
+
+    # ==============================
+    # MODO TEXTO
+    # ==============================
     if st.session_state["single_mode"] == "Texto":
-        st.markdown(
-            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b> para melhor precisão.</div>",
-            unsafe_allow_html=True,
-        )
 
         content = st.text_area(
             "Conteúdo para avaliação",
             height=260,
-            value="",
             key="single_text",
-            placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n[VENDEDOR] ...",
+            placeholder="Cole aqui a transcrição",
         )
 
         col1, col2 = st.columns(2)
+
         with col1:
-            if st.button("Iniciar avaliação", use_container_width=True, type="primary"):
+            if st.button(
+                "Iniciar avaliação",
+                use_container_width=True,
+                type="primary"
+            ):
                 clear_single()
                 run_single_text(content)
+
+        with col2:
+            if st.button("Limpar", use_container_width=True):
+                clear_single()
+
+    # ==============================
+    # MODO ÁUDIO
+    # ==============================
+    else:
+
+        up = st.file_uploader(
+            "Áudio para avaliação",
+            type=["wav"],
+            accept_multiple_files=False,
+            key="single_audio",
+        )
+
+        st.markdown(
+            "<div class='hint'>Para melhor experiência, priorize gravações com boa qualidade de áudio.</div>",
+            unsafe_allow_html=True,
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button(
+                "Iniciar avaliação",
+                use_container_width=True,
+                type="primary"
+            ):
+                if up is not None:
+                    clear_single()
+                    run_single_audio(up)
 
         with col2:
             if st.button("Limpar", use_container_width=True):
@@ -1135,11 +1179,6 @@ else:
             unsafe_allow_html=True,
         )
 
-        st.markdown(
-            "<div class='hint'>Marque as falas com <b>[VENDEDOR]</b> e <b>[CLIENTE]</b>.</div>",
-            unsafe_allow_html=True,
-        )
-
         up_files = st.file_uploader(
             "Arquivos de texto",
             type=["txt"],
@@ -1156,7 +1195,7 @@ else:
             height=220,
             value="",
             key="batch_text_area",
-            placeholder="[VENDEDOR] ...\n[CLIENTE] ...\n---\n[VENDEDOR] ...\n[CLIENTE] ...",
+            placeholder="Cole aqui os blocos separados por ---",
         )
 
         col1, col2 = st.columns(2)
