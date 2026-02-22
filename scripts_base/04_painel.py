@@ -96,7 +96,7 @@ st.markdown(
 }
 
 body { background:var(--bg); color:var(--ink); font-family:Segoe UI, Arial, sans-serif; }
-.block-container { padding-top: 1.1rem; padding-bottom: 2.0rem; max-width: 1500px; }
+.block-container { padding-top: 2.2rem; padding-bottom: 2.0rem; max-width: 1500px; }
 
 hr { border-color: var(--line2); }
 
@@ -119,7 +119,7 @@ hr { border-color: var(--line2); }
   border:1px solid rgba(199,214,245,0.85);
   background:linear-gradient(135deg, rgba(246,249,255,1) 0%, rgba(255,255,255,1) 55%, rgba(230,255,243,0.45) 100%);
   box-shadow:0 14px 34px rgba(11,18,32,0.10);
-  margin-top:6px; margin-bottom:14px;
+  margin-top:18px; margin-bottom:14px;
 }
 .hero .left{ display:flex; gap:12px; align-items:flex-start; }
 .hero .icon{
