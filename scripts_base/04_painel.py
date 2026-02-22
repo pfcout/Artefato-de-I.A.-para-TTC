@@ -1042,7 +1042,6 @@ with st.sidebar:
     if st.button("Limpar resultados", use_container_width=True):
         clear_all_results()
 
-
 # ==============================
 # Telas
 # ==============================
@@ -1073,6 +1072,13 @@ if st.session_state["view"] == "single":
     # ==============================
     if st.session_state["single_mode"] == "Texto":
 
+        up_txt = st.file_uploader(
+            "Arquivo de texto (opcional)",
+            type=["txt"],
+            accept_multiple_files=False,
+            key="single_text_file",
+        )
+
         content = st.text_area(
             "Conteúdo para avaliação",
             height=260,
@@ -1088,8 +1094,23 @@ if st.session_state["view"] == "single":
                 use_container_width=True,
                 type="primary"
             ):
-                clear_single()
-                run_single_text(content)
+
+                texto_final = ""
+
+                # Prioriza arquivo se existir
+                if up_txt is not None:
+                    try:
+                        texto_final = up_txt.getvalue().decode("utf-8", errors="ignore")
+                    except Exception:
+                        texto_final = ""
+                else:
+                    texto_final = content
+
+                if not texto_final.strip():
+                    st.error("Insira ou envie um conteúdo para continuar.")
+                else:
+                    clear_single()
+                    run_single_text(texto_final)
 
         with col2:
             if st.button("Limpar", use_container_width=True):
