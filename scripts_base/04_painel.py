@@ -1128,31 +1128,6 @@ if st.session_state["view"] == "single":
             if st.button("Limpar", use_container_width=True):
                 clear_single()
 
-    else:
-        up = st.file_uploader(
-            "Áudio para avaliação",
-            type=["wav"],
-            accept_multiple_files=False,
-            key="single_audio",
-        )
-
-        st.markdown(
-            "<div class='hint'>Para melhor experiência, priorize gravações com boa qualidade de áudio.</div>",
-            unsafe_allow_html=True,
-        )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Iniciar avaliação", use_container_width=True, type="primary"):
-                if up is None:
-                    st.error("Envie um áudio para continuar.")
-                else:
-                    clear_single()
-                    run_single_audio(up)
-
-        with col2:
-            if st.button("Limpar", use_container_width=True):
-                clear_single()
 
 else:
     st.markdown("### Visão gerencial")
