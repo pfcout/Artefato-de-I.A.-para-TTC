@@ -1320,7 +1320,7 @@ RAM recomendada: 8GB+
 
 ---
 
-## 🟢 Opção leve (apenas para teste)
+## 🟢 Opção leve (apenas para teste de geração do exel, provavelmente vai vir tudo 0)
 
 ```
 qwen2.5:3b-instruct-q4_K_M
@@ -1360,9 +1360,9 @@ O sistema depende do modelo seguir rigorosamente o padrão.
 
 ---
 
-# 💻 Dicas para conseguir usar o modelo 14B
+# 💻 Dicas para conseguir usar o modelo 14B ou o mdeio
 
-Se quiser tentar rodar o modelo principal mesmo com pouca RAM:
+Se quiser tentar rodar o modelo principal ou o modelo medio mesmo com pouca RAM:
 
 ### ✅ Antes de rodar:
 
@@ -1388,7 +1388,7 @@ No Windows:
 | ----------- | --------- | ------------------- |
 | qwen2.5:14b | ⭐⭐⭐⭐⭐     | ✅ Garantido         |
 | qwen2.5:7b  | ⭐⭐⭐       | ⚠️ Parcial          |
-| qwen2.5:3b  | ⭐⭐        | ❌ Apenas teste      |
+| qwen2.5:3b  | ⭐        | ❌ Apenas teste      |
 
 Se quiser resultado confiável → use **14B**.
 Se seu PC for mais simples → teste 7B ou 3B sabendo que a qualidade pode cair.
