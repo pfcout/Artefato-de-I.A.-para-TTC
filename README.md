@@ -1356,7 +1356,7 @@ O sistema depende do modelo seguir rigorosamente o padrão.
 
 ---
 
-# 💻 Dicas para conseguir usar o modelo 14B ou o mdeio
+# 💻 Dicas para conseguir usar o modelo 14B ou o medio
 
 Se quiser tentar rodar o modelo principal ou o modelo medio mesmo com pouca RAM:
 
@@ -1387,7 +1387,7 @@ No Windows:
 | qwen2.5:3b  | ⭐        | ❌ Apenas teste      |
 
 Se quiser resultado confiável → use **14B**.
-Se seu PC for mais simples → teste 7B ou 3B sabendo que a qualidade pode cair.
+Se seu PC for mais simples → teste 7B ou 3B sabendo que a qualidade vai cair.
 
 ---
 
@@ -1406,15 +1406,15 @@ Checklist:
 
 ## Segurança e Ética de Dados
 
-* Áudios não são armazenados permanentemente
-* Transcrições são temporárias
+* Áudios são armazenados permanentemente apenas rodando local
+* Transcrições são temporárias local
 * Nenhum dado sensível é persistido
 * Foco exclusivo em métricas agregadas e avaliação metodológica
 
 ---
 ## Rodar Depois de Baixado Corretamente:
 
-entre na pasta do projeto edepois:
+entre na pasta do projeto e depois:
 
 para entrar na venv 01:
 
@@ -1422,7 +1422,7 @@ para entrar na venv 01:
 .\.venv_transcricao\Scripts\Activate.ps1
 ```
 
-para usar o 01: (se nao estiver usando large-v3, não esqueça de trocar.)
+para usar o 01: (se não estiver usando large-v3, não esqueça de trocar.)
 ```powershell
 $env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
 python .\scripts_base\01_transcricao.py `
@@ -1441,7 +1441,7 @@ para entrar na venv 02:
 .\.venv_zeroshot\Scripts\Activate.ps1
 ```
 
-para usar o 02: (se nao estiver usando a qwen2.5:14b..., não esqueça de trocar)
+para usar o 02: (se não estiver usando a qwen2.5:14b..., não esqueça de trocar)
 ```powershell
 $env:OLLAMA_MODEL="qwen2.5:14b-instruct-q4_K_M"
 
