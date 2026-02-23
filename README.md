@@ -1265,7 +1265,6 @@ python -m pip install -U pip setuptools wheel
 ```powershell
 python -m pip install -r requirements\requirements_zero_shot.txt
 ```
-Aqui está em formato pronto para **README.md**, simples e direto para copiar e colar 👇
 
 ---
 
