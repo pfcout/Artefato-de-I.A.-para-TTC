@@ -1268,10 +1268,22 @@ python -m pip install -U pip setuptools wheel
 ```powershell
 python -m pip install -r requirements\requirements_zero_shot.txt
 ```
+Aqui está em formato pronto para **README.md**, simples e direto para copiar e colar 👇
 
-## 3) Executar a análise SPIN (exemplo PowerShell)
+---
 
-Exemplo usando os caminhos padrão do projeto (entrada em `arquivos_transcritos/txt` e saída em `saida_excel`):
+# 3) Executar a análise SPIN (Ollama)
+
+Exemplo usando os caminhos padrão do projeto
+(entrada em `arquivos_transcritos/txt` e saída em `saida_excel`):
+
+## ✅ Modelo recomendado
+
+O projeto foi validado e testado com:
+
+**Modelo principal:**
+
+* `qwen2.5:14b-instruct-q4_K_M`
 
 ```powershell
 $env:OLLAMA_MODEL="qwen2.5:14b-instruct-q4_K_M"
@@ -1284,11 +1296,104 @@ python .\scripts_base\02_zeroshot.py `
   --workers 1
 ```
 
-Observações:
+⚠️ O projeto **garante funcionamento correto apenas com o modelo 14B**.
+Modelos menores podem funcionar, mas **não há garantia de qualidade ou obediência total ao padrão de avaliação**.
 
-* O script 02 lê prompts a partir de arquivos em `assets/`:
+---
 
-  * `assets/Command_Core_D_Check_V2_6.txt`
+# 🔽 Opções mais leves (para PCs com pouca RAM)
+
+Se seu computador não suportar o 14B, você pode testar versões menores:
+
+## 🟡 Opção intermediária (qualidade próxima, menor RAM)
+
+```
+qwen2.5:7b-instruct-q4_K_M
+```
+
+```powershell
+$env:OLLAMA_MODEL="qwen2.5:7b-instruct-q4_K_M"
+```
+
+Qualidade: boa
+RAM recomendada: 8GB+
+
+---
+
+## 🟢 Opção leve (apenas para teste)
+
+```
+qwen2.5:3b-instruct-q4_K_M
+```
+
+```powershell
+$env:OLLAMA_MODEL="qwen2.5:3b-instruct-q4_K_M"
+```
+
+Qualidade: limitada
+RAM recomendada: 6GB+
+
+⚠️ Quanto menor o modelo:
+
+* Mais chance de ignorar instruções
+* Pode quebrar formato da resposta
+* Pode retornar avaliações como `00`
+* Pode não preencher todos os critérios
+
+---
+
+# ⚠️ Muito Importante
+
+Se o modelo Ollama:
+
+* Não obedecer exatamente o padrão do prompt
+* Não retornar todos os campos esperados
+* Retornar texto fora do formato
+
+A avaliação pode:
+
+* Falhar
+* Vir incompleta
+* Ou retornar todas as notas como `00`
+
+O sistema depende do modelo seguir rigorosamente o padrão.
+
+---
+
+# 💻 Dicas para conseguir usar o modelo 14B
+
+Se quiser tentar rodar o modelo principal mesmo com pouca RAM:
+
+### ✅ Antes de rodar:
+
+1. Feche navegador (Chrome consome muita RAM)
+2. Feche VSCode ou IDEs pesadas
+3. Feche outros programas abertos
+4. Reinicie o computador antes de rodar
+5. Use `--workers 1` (já recomendado)
+
+### ✅ Verificar uso de memória:
+
+No Windows:
+
+* Ctrl + Shift + Esc → Gerenciador de Tarefas
+* Veja a aba **Memória**
+* Se estiver acima de 80%, pode dar erro
+
+---
+
+# 📌 Resumo simples
+
+| Modelo      | Qualidade | Garantia do projeto |
+| ----------- | --------- | ------------------- |
+| qwen2.5:14b | ⭐⭐⭐⭐⭐     | ✅ Garantido         |
+| qwen2.5:7b  | ⭐⭐⭐       | ⚠️ Parcial          |
+| qwen2.5:3b  | ⭐⭐        | ❌ Apenas teste      |
+
+Se quiser resultado confiável → use **14B**.
+Se seu PC for mais simples → teste 7B ou 3B sabendo que a qualidade pode cair.
+
+---
 
 ## 4) Saídas esperadas após a etapa 02
 
@@ -1311,7 +1416,47 @@ Checklist:
 * Foco exclusivo em métricas agregadas e avaliação metodológica
 
 ---
+## Rodar Depois de Baixado Corretamente:
 
+para entrar na venv 01:
+
+```powershell
+.\.venv_transcricao\Scripts\Activate.ps1
+```
+
+para usar o 01: (se nao estiver usando large-v3, não esqueça de trocar.)
+```powershell
+$env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
+python .\scripts_base\01_transcricao.py `
+  --input_dir ".\arquivos_audio" `
+  --pattern "*.wav" `
+  --recursive true `
+  --model large-v3 `
+  --language pt `
+  --beam_size 5 `
+  --vad_filter false `
+  --device auto
+```
+
+para entrar na venv 02: 
+```powershell
+.\.venv_zeroshot\Scripts\Activate.ps1
+```
+
+para usar o 02: (se nao estiver usando a qwen2.5:14b..., não esqueça de trocar)
+```powershell
+$env:OLLAMA_MODEL="qwen2.5:14b-instruct-q4_K_M"
+
+python .\scripts_base\02_zeroshot.py `
+  --in_dir ".\arquivos_transcritos\txt" `
+  --out_dir ".\saida_excel" `
+  --pattern "*.txt" `
+  --recursive true `
+  --workers 1
+```
+
+
+---
 ## Créditos e Autoria
 
 ### Realização Acadêmica
