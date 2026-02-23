@@ -1128,10 +1128,16 @@ Pasta utilizada no projeto:
 
 * `arquivos_audio/`
 
-## 4) Executar a transcrição (exemplo PowerShell com quebras de linha)
+Aqui está em formato pronto para README.md 👇
+Você pode copiar e colar direto.
 
-Exemplo para processar todos os `.wav` da pasta `arquivos_audio`:
-(token e opcional, mas altamente recomendado)
+---
+
+# 4) Executar a transcrição (PowerShell)
+
+Exemplo para processar todos os `.wav` da pasta `arquivos_audio`.
+
+> ⚠️ Dica: Para evitar estouro de memória (RAM) e TXT vazio, recomenda-se rodar **1 WAV por vez**, principalmente se estiver usando `large-v3`.
 
 ```powershell
 $env:HF_TOKEN="COLE_AQUI_SEU_TOKEN"
@@ -1146,10 +1152,72 @@ python .\scripts_base\01_transcricao.py `
   --device auto
 ```
 
-Observações importantes:
+---
 
-* `--device auto` tenta usar GPU se existir e, caso contrário, usa CPU automaticamente.
-* `HF_TOKEN` é opcional. Se não estiver configurado (ou se falhar), o script deve finalizar **sem travar**, gerando as saídas com fallback.
+## Observações importantes
+
+* `--device auto` tenta usar GPU se existir. Caso contrário, usa CPU automaticamente.
+* `HF_TOKEN` é opcional. Se não estiver configurado (ou falhar), o script deve finalizar **sem travar**, usando fallback automático.
+* Quanto menor o modelo, pior será a transcrição.
+
+---
+
+# ⚠️ Se o TXT sair vazio
+
+Se após rodar o script o arquivo `.txt` estiver vazio:
+
+### 1️⃣ Verifique o arquivo `.json`
+
+Vá até a pasta:
+
+```
+arquivos_transcritos
+```
+
+Abra o `.json` correspondente e procure por algo como:
+
+```json
+"error": "RuntimeError: mkl_malloc: failed to allocate memory"
+```
+
+Se aparecer algo parecido com **failed to allocate memory**, significa que faltou memória (RAM).
+
+---
+
+# ✅ Como corrigir (passo simples)
+
+1. Apague os arquivos `.txt` e `.json` vazios da pasta `arquivos_transcritos`.
+2. Vá na pasta `arquivo_historico_audio` e apague os arquivos usados.
+3. Coloque as ligações novamente na pasta `arquivos_audio`.
+4. Rode novamente usando um modelo menor.
+
+---
+
+Se preferir tentar com o modelo large novamente, feche apps abertos e libere memoria ram, deixe somente o terminal aberto e tente novamente, se não rodar, terá que reduzir o modelo.
+
+## 🔽 Tente com modelo médio
+
+```powershell
+--model medium
+```
+
+Se ainda falhar:
+
+```powershell
+--model small
+```
+
+---
+
+# 📌 Regra simples
+
+* TXT vazio → abra o `.json`
+* Se for erro de memória → diminua o modelo
+* Sempre apague os arquivos vazios antes de testar novamente
+
+Isso garante que as ligações que falharam sejam processadas corretamente na próxima execução.
+
+---
 
 ## 5) Saídas esperadas após a etapa 01
 
