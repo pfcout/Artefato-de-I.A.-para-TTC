@@ -1418,6 +1418,8 @@ Checklist:
 ---
 ## Rodar Depois de Baixado Corretamente:
 
+entre na pasta do projeto edepois:
+
 para entrar na venv 01:
 
 ```powershell
