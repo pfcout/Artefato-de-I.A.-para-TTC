@@ -33,7 +33,10 @@ Auto GPU:
 Pyannote continua opcional (HF_TOKEN) e nunca pode travar o pipeline.
 """
 
+
 from __future__ import annotations
+
+print("ARQUIVO CARREGADO")
 
 import argparse
 import datetime as _dt
@@ -55,13 +58,20 @@ import numpy as np
 warnings.filterwarnings("ignore", message=r".*torchcodec is not installed correctly.*")
 
 # ------------------------------
-# Pontuação (opcional)
+# Pontuação (lazy load - seguro)
 # ------------------------------
-try:
-    from deepmultilingualpunctuation import PunctuationModel  # type: ignore
-    _PUNCT_MODEL = PunctuationModel()
-except Exception:
-    _PUNCT_MODEL = None
+_PUNCT_MODEL = None
+
+def get_punct_model():
+    global _PUNCT_MODEL
+    if _PUNCT_MODEL is None:
+        try:
+            from deepmultilingualpunctuation import PunctuationModel  # type: ignore
+            _PUNCT_MODEL = PunctuationModel()
+        except Exception as e:
+            print(f"Aviso: falha ao carregar modelo de pontuação: {type(e).__name__}: {e}")
+            _PUNCT_MODEL = None
+    return _PUNCT_MODEL
 
 # ------------------------------
 # Fuzzy (opcional) — preferir rapidfuzz
@@ -1309,9 +1319,21 @@ def main() -> int:
     recursive = _parse_bool(args.recursive)
     vad_filter = _parse_bool(args.vad_filter)
 
-    audio_files = resolve_audio_files(input_dir, args.pattern, recursive, args.only_file)
+    audio_files = resolve_audio_files(
+        input_dir,
+        args.pattern,
+        recursive,
+        args.only_file
+    )
+
     if not audio_files:
-        print(f"Nenhum áudio encontrado. input_dir={input_dir} pattern={args.pattern} recursive={recursive} only_file={args.only_file!r}")
+        print(
+            f"Nenhum áudio encontrado. "
+            f"input_dir={input_dir} "
+            f"pattern={args.pattern} "
+            f"recursive={recursive} "
+            f"only_file={args.only_file!r}"
+        )
         db.close()
         return 2
 
@@ -1327,7 +1349,10 @@ def main() -> int:
         db.close()
         return 2
 
-    role_patterns, role_pat_stats = load_role_patterns(args.roles_vendor_path, args.roles_client_path)
+    role_patterns, role_pat_stats = load_role_patterns(
+        args.roles_vendor_path,
+        args.roles_client_path
+    )
 
     resolved_device = _resolve_device(args.device)
     compute_type = "int8" if resolved_device == "cpu" else "float16"
@@ -1340,17 +1365,31 @@ def main() -> int:
         vad_filter=bool(vad_filter),
         beam_size=int(args.beam_size),
     )
+
     params_hash = _params_hash(asr_params)
 
     print("SPIN Analyzer — 01_transcricao")
     print(f"Entrada: {input_dir.resolve()}")
     print(f"Saídas:  TXT={txt_dir.resolve()} | JSON={json_dir.resolve()}")
     print(f"Cache:   {cache_db_path}")
-    print(f"ASR:     faster-whisper | model={asr_params.model} | device={asr_params.device} | compute_type={asr_params.compute_type} | lang={asr_params.language}")
-    print(f"Diarização: {'habilitada' if hf_present else 'desabilitada'} (HF_TOKEN {'presente' if hf_present else 'ausente'})")
     print(
-        f"Roles (fallback textual): vendor_re={role_pat_stats['vendor_re']} vendor_txt={role_pat_stats['vendor_txt']} | "
-        f"client_re={role_pat_stats['client_re']} client_txt={role_pat_stats['client_txt']} | "
+        f"ASR:     faster-whisper | "
+        f"model={asr_params.model} | "
+        f"device={asr_params.device} | "
+        f"compute_type={asr_params.compute_type} | "
+        f"lang={asr_params.language}"
+    )
+    print(
+        f"Diarização: "
+        f"{'habilitada' if hf_present else 'desabilitada'} "
+        f"(HF_TOKEN {'presente' if hf_present else 'ausente'})"
+    )
+    print(
+        f"Roles (fallback textual): "
+        f"vendor_re={role_pat_stats['vendor_re']} "
+        f"vendor_txt={role_pat_stats['vendor_txt']} | "
+        f"client_re={role_pat_stats['client_re']} "
+        f"client_txt={role_pat_stats['client_txt']} | "
         f"fuzzy={'rapidfuzz' if _rfuzz is not None else ('fuzzywuzzy' if fuzz is not None else 'desabilitado')}"
     )
     print(f"Itens:   {len(audio_files)}")
@@ -1367,9 +1406,16 @@ def main() -> int:
             audio_hash = _sha256_file(audio_path)
         except Exception as e:
             audio_hash = ""
-            print(f"[{idx}/{len(audio_files)}] {name} | Aviso: falha ao calcular hash. Motivo: {type(e).__name__}: {e}")
+            print(
+                f"[{idx}/{len(audio_files)}] {name} | "
+                f"Aviso: falha ao calcular hash. "
+                f"Motivo: {type(e).__name__}: {e}"
+            )
 
-        cache_key = _sha256_bytes(f"{audio_hash}{params_hash}".encode("utf-8")) if audio_hash else ""
+        cache_key = (
+            _sha256_bytes(f"{audio_hash}{params_hash}".encode("utf-8"))
+            if audio_hash else ""
+        )
 
         if (not args.force) and cache_key:
             cached = db.get(cache_key)
@@ -1377,24 +1423,50 @@ def main() -> int:
                 try:
                     _write_text(out_txt, cached["txt"])
                     _write_json(out_json, cached["json"])
+
                     try:
                         _archive_audio(audio_path, cache_dir, audio_hash)
                     except Exception:
                         pass
+
                     elapsed = time.time() - item_t0
-                    print(f"[{idx}/{len(audio_files)}] {name} | Cache: HIT | Tempo: {_format_elapsed(elapsed)} | TXT/JSON regenerados")
+                    print(
+                        f"[{idx}/{len(audio_files)}] {name} | "
+                        f"Cache: HIT | Tempo: {_format_elapsed(elapsed)} | "
+                        f"TXT/JSON regenerados"
+                    )
                     continue
+
                 except Exception as e:
-                    print(f"[{idx}/{len(audio_files)}] {name} | Cache: HIT, mas falhou ao escrever saídas. Reprocessando. Motivo: {type(e).__name__}: {e}")
+                    print(
+                        f"[{idx}/{len(audio_files)}] {name} | "
+                        f"Cache: HIT, mas falhou ao escrever saídas. "
+                        f"Reprocessando. Motivo: {type(e).__name__}: {e}"
+                    )
 
         errors: List[Dict[str, str]] = []
         duration_s = _try_get_wav_duration_seconds(audio_path)
 
-        print(f"[{idx}/{len(audio_files)}] {name} | Início | Device={asr_params.device} | Modelo={asr_params.model}")
+        print(
+            f"[{idx}/{len(audio_files)}] {name} | "
+            f"Início | Device={asr_params.device} | "
+            f"Modelo={asr_params.model}"
+        )
+
         tick0 = time.time()
 
-        asr_segments_raw = _run_asr_faster_whisper(audio_path, asr_params, errors)
-        print(f"[{idx}/{len(audio_files)}] {name} | ASR finalizado | Tempo parcial {_format_elapsed(time.time() - tick0)} | Segmentos {len(asr_segments_raw)}")
+        asr_segments_raw = _run_asr_faster_whisper(
+            audio_path,
+            asr_params,
+            errors
+        )
+
+        print(
+            f"[{idx}/{len(audio_files)}] {name} | "
+            f"ASR finalizado | "
+            f"Tempo parcial {_format_elapsed(time.time() - tick0)} | "
+            f"Segmentos {len(asr_segments_raw)}"
+        )
 
         diarization_mode = "fallback_all_vendor"
         segments_final: List[Dict[str, Any]] = []
@@ -1408,31 +1480,48 @@ def main() -> int:
         if not asr_segments_raw:
             diarization_mode = "fallback_all_vendor"
             segments_final = []
+
         else:
             asr_segments, merge_stats = _merge_asr_segments(asr_segments_raw)
-            print(f"[{idx}/{len(audio_files)}] {name} | Merge ASR: {merge_stats['merges']} junções | {merge_stats['in']} -> {merge_stats['out']} segmentos")
 
-            if _PUNCT_MODEL is not None:
+            print(
+                f"[{idx}/{len(audio_files)}] {name} | "
+                f"Merge ASR: {merge_stats['merges']} junções | "
+                f"{merge_stats['in']} -> {merge_stats['out']} segmentos"
+            )
+
+            punct_model = get_punct_model()
+
+            if punct_model is not None:
                 for seg in asr_segments:
                     try:
-                        seg["text"] = _PUNCT_MODEL.restore_punctuation(seg.get("text", ""))
+                        seg["text"] = punct_model.restore_punctuation(
+                            seg.get("text", "")
+                        )
                     except Exception:
                         pass
 
-            total_corrigidas = 0
             if dict_enabled:
                 for seg in asr_segments:
                     try:
-                        seg["text"], n_corr = aplicar_dicionario(seg.get("text", ""), dicionario)
+                        seg["text"], n_corr = aplicar_dicionario(
+                            seg.get("text", ""),
+                            dicionario
+                        )
                         total_corrigidas += int(n_corr)
                     except Exception:
                         pass
 
             asr_segments, split_stats = split_mixed_turns(asr_segments)
+
             if split_stats.get("changed", 0) > 0:
-                print(f"[{idx}/{len(audio_files)}] {name} | Split turnos: {split_stats['changed']} segmentos quebrados | {split_stats['in']} -> {split_stats['out']} segmentos")
-            else:
-                print(f"[{idx}/{len(audio_files)}] {name} | Split turnos: 0 | {split_stats['in']} -> {split_stats['out']} segmentos")
+                print(
+                    f"[{idx}/{len(audio_files)}] {name} | "
+                    f"Split aplicado | "
+                    f"{split_stats['in']} -> {split_stats['out']}"
+                )
+
+            # TODO: resto do bloco continua exatamente igual ao seu
 
             if hf_present:
                 ann, diar_ok, reason = _run_diarization_pyannote(audio_path, hf_token, asr_params.device, errors)
