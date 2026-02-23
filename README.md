@@ -1128,9 +1128,6 @@ Pasta utilizada no projeto:
 
 * `arquivos_audio/`
 
-Aqui está em formato pronto para README.md 👇
-Você pode copiar e colar direto.
-
 ---
 
 # 4) Executar a transcrição (PowerShell)
